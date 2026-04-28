@@ -5,6 +5,15 @@ import { useTrackerStore } from '../../store/tracker'
 
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ?? ''
 
+// SVG data URI — no asset bundler dependency, works in all Electron/web contexts
+const MARKER_SVG = encodeURIComponent(
+  `<svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">` +
+  `<path fill-rule="evenodd" clip-rule="evenodd" d="M27.5076 42.3158C26.7881 42.0174 25.9794 42.0174 25.2599 42.3144C22.9784 43.2554 17.6526 45.4518 13.2962 47.25C12.1986 47.7023 10.935 47.4498 10.0953 46.6088C9.25697 45.7691 9.00587 44.5055 9.46082 43.4079C13.1922 34.3993 19.8747 18.2682 23.6102 9.25425C24.0651 8.15535 25.137 7.43985 26.325 7.43985C27.513 7.43985 28.5849 8.15535 29.0399 9.25425C32.7726 18.2614 39.4484 34.375 43.1811 43.3876C43.6361 44.4865 43.385 45.7515 42.5439 46.5912C41.7029 47.4323 40.4379 47.6834 39.3404 47.2271C35.0231 45.4356 29.7689 43.2554 27.5076 42.3158Z" fill="#ff385c" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` +
+  `<path fill-rule="evenodd" clip-rule="evenodd" d="M26.325 7.43985C27.513 7.43985 28.5849 8.15535 29.0398 9.25425L43.1811 43.3876C43.636 44.4865 43.3849 45.7515 42.5439 46.5912C41.7028 47.4323 40.4379 47.6834 39.3403 47.2271L27.5076 42.3158C27.1296 42.1592 26.7259 42.0849 26.325 42.0917V7.43985Z" fill="#cc1a3e"/>` +
+  `</svg>`
+)
+const MARKER_URL = `data:image/svg+xml,${MARKER_SVG}`
+
 let loaderInstance: Loader | null = null
 function getLoader() {
   if (!loaderInstance) {
@@ -44,12 +53,9 @@ export default function GPSMap() {
           map,
           position: { lat: 44.5, lng: 11.5 },
           icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 9,
-            fillColor: '#ff385c',
-            fillOpacity: 1,
-            strokeColor: '#ffffff',
-            strokeWeight: 3,
+            url: MARKER_URL,
+            scaledSize: new google.maps.Size(27, 27),
+            anchor: new google.maps.Point(13.5, 27),
           },
         })
 

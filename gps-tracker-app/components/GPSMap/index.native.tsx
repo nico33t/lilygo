@@ -27,7 +27,7 @@ export default function GPSMap() {
       {gps?.valid && (
         <Marker
           coordinate={{ latitude: gps.lat, longitude: gps.lon }}
-          pinColor="#ff385c"
+          image={require('../../assets/marker.png')}
         />
       )}
       {track.length > 1 && (
