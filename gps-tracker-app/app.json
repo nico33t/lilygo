@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "GPS Tracker",
+    "slug": "gps-tracker",
+    "version": "0.0.2",
+    "orientation": "default",
+    "platforms": ["ios", "android", "web"],
+    "scheme": "gpstracker",
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      "react-native-maps"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
