@@ -12,9 +12,11 @@ interface TrackerState {
   status: ConnectionStatus
   config: TrackerConfig
   track: TrackPoint[]
+  deviceIp: string | null
   setGPS: (data: GPSData) => void
   setStatus: (s: ConnectionStatus) => void
   setConfig: (c: TrackerConfig) => void
+  setDeviceIp: (ip: string | null) => void
   clearTrack: () => void
 }
 
@@ -23,6 +25,7 @@ export const useTrackerStore = create<TrackerState>((set) => ({
   status: 'disconnected',
   config: { ...DEFAULT_CONFIG },
   track: [],
+  deviceIp: null,
 
   setGPS: (data) =>
     set((state) => ({
@@ -35,6 +38,8 @@ export const useTrackerStore = create<TrackerState>((set) => ({
   setStatus: (status) => set({ status }),
 
   setConfig: (config) => set({ config }),
+
+  setDeviceIp: (deviceIp) => set({ deviceIp }),
 
   clearTrack: () => set({ track: [] }),
 }))

@@ -1,18 +1,19 @@
 import { useTrackerStore } from '../store/tracker'
 import { GPSData, TrackerConfig, WSCommand, WSConfigMessage } from '../types'
-import { RECONNECT_DELAY_MS, WS_URL } from '../constants/tracker'
+import { RECONNECT_DELAY_MS, buildWsUrl } from '../constants/tracker'
 
 let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let isManualDisconnect = false
+let currentIp: string | null = null
 
 function scheduleReconnect() {
-  if (isManualDisconnect) return
+  if (isManualDisconnect || !currentIp) return
   if (reconnectTimer) clearTimeout(reconnectTimer)
-  reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS)
+  reconnectTimer = setTimeout(() => connect(currentIp!), RECONNECT_DELAY_MS)
 }
 
-export function connect() {
+export function connect(ip: string) {
   if (
     ws?.readyState === WebSocket.OPEN ||
     ws?.readyState === WebSocket.CONNECTING
@@ -21,9 +22,13 @@ export function connect() {
   }
 
   isManualDisconnect = false
-  useTrackerStore.getState().setStatus('connecting')
+  currentIp = ip
 
-  ws = new WebSocket(WS_URL)
+  const store = useTrackerStore.getState()
+  store.setDeviceIp(ip)
+  store.setStatus('connecting')
+
+  ws = new WebSocket(buildWsUrl(ip))
 
   ws.onopen = () => {
     useTrackerStore.getState().setStatus('connected')
@@ -32,9 +37,7 @@ export function connect() {
 
   ws.onmessage = (e) => {
     try {
-      const msg = JSON.parse(e.data as string) as
-        | GPSData
-        | WSConfigMessage
+      const msg = JSON.parse(e.data as string) as GPSData | WSConfigMessage
 
       if ('type' in msg && msg.type === 'config') {
         const cfg = msg as WSConfigMessage
@@ -68,10 +71,13 @@ export function sendCommand(cmd: WSCommand) {
 
 export function disconnect() {
   isManualDisconnect = true
+  currentIp = null
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
   ws?.close()
   ws = null
+  useTrackerStore.getState().setDeviceIp(null)
+  useTrackerStore.getState().setStatus('disconnected')
 }

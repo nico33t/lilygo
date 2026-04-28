@@ -11,7 +11,7 @@ if (!fs.existsSync(srcDir)) {
 
 fs.mkdirSync(destDir, { recursive: true })
 
-const files = ['leaflet.min.js', 'leaflet.min.css', 'images']
+const files = ['leaflet.js', 'leaflet.css', 'images']
 
 for (const file of files) {
   const src = path.join(srcDir, file)

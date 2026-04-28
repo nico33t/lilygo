@@ -1,9 +1,9 @@
 import { useEffect } from 'react'
 import { connect, disconnect } from '../services/wsService'
 
-export function useTracker() {
+export function useTracker(deviceIp: string) {
   useEffect(() => {
-    connect()
+    connect(deviceIp)
     return disconnect
-  }, [])
+  }, [deviceIp])
 }
