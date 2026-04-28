@@ -10,6 +10,9 @@ gps-tracker-app/dist/
 gps-tracker-app/release/
 gps-tracker-app/web/leaflet/
 
+# Env files (contengono chiavi private)
+gps-tracker-app/.env
+
 # macOS
 .DS_Store
 **/.DS_Store

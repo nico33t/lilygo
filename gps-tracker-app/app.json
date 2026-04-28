@@ -4,7 +4,11 @@
     "slug": "gps-tracker",
     "version": "0.0.2",
     "orientation": "default",
-    "platforms": ["ios", "android", "web"],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "scheme": "gpstracker",
     "web": {
       "bundler": "metro",
@@ -12,7 +16,8 @@
     },
     "plugins": [
       "expo-router",
-      "react-native-maps"
+      "react-native-maps",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

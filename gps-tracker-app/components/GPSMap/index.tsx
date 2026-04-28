@@ -1,69 +1,99 @@
+import { Loader } from '@googlemaps/js-api-loader'
 import { useEffect, useRef } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import { useTrackerStore } from '../../store/tracker'
 
-declare const L: typeof import('leaflet')
+const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ?? ''
 
-const INITIAL_CENTER: [number, number] = [44.5, 11.5]
-const INITIAL_ZOOM = 6
+let loaderInstance: Loader | null = null
+function getLoader() {
+  if (!loaderInstance) {
+    loaderInstance = new Loader({ apiKey: API_KEY, version: 'weekly' })
+  }
+  return loaderInstance
+}
 
 export default function GPSMap() {
   const divRef = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<ReturnType<typeof L.map> | null>(null)
-  const markerRef = useRef<ReturnType<typeof L.marker> | null>(null)
-  const polylineRef = useRef<ReturnType<typeof L.polyline> | null>(null)
+  const mapRef = useRef<google.maps.Map | null>(null)
+  const markerRef = useRef<google.maps.Marker | null>(null)
+  const polylineRef = useRef<google.maps.Polyline | null>(null)
   const centeredRef = useRef(false)
 
   const gps = useTrackerStore((s) => s.gps)
   const track = useTrackerStore((s) => s.track)
 
   useEffect(() => {
-    if (mapRef.current || !divRef.current) return
-    if (typeof L === 'undefined') return
+    if (mapRef.current || !divRef.current || !API_KEY) return
 
-    const map = L.map(divRef.current, {
-      zoomControl: true,
-      attributionControl: true,
-    }).setView(INITIAL_CENTER, INITIAL_ZOOM)
+    getLoader()
+      .load()
+      .then(() => {
+        if (!divRef.current) return
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors',
-    }).addTo(map)
+        const map = new google.maps.Map(divRef.current, {
+          center: { lat: 44.5, lng: 11.5 },
+          zoom: 6,
+          mapTypeId: google.maps.MapTypeId.ROADMAP,
+          fullscreenControl: false,
+          streetViewControl: false,
+          mapTypeControl: false,
+        })
 
-    const icon = L.divIcon({
-      html: '<div style="width:16px;height:16px;background:#ff385c;border:3px solid #ffffff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.35)"></div>',
-      iconSize: [16, 16],
-      iconAnchor: [8, 8],
-      className: '',
-    })
+        markerRef.current = new google.maps.Marker({
+          map,
+          position: { lat: 44.5, lng: 11.5 },
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 9,
+            fillColor: '#ff385c',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 3,
+          },
+        })
 
-    markerRef.current = L.marker(INITIAL_CENTER, { icon }).addTo(map)
-    polylineRef.current = L.polyline([], {
-      color: '#ff385c',
-      weight: 3,
-      opacity: 0.85,
-    }).addTo(map)
+        polylineRef.current = new google.maps.Polyline({
+          map,
+          path: [],
+          strokeColor: '#ff385c',
+          strokeWeight: 3,
+          strokeOpacity: 0.85,
+        })
 
-    mapRef.current = map
+        mapRef.current = map
+      })
+      .catch(console.error)
   }, [])
 
   useEffect(() => {
-    if (!mapRef.current || !markerRef.current || !gps?.valid) return
+    if (!mapRef.current || !gps?.valid) return
 
-    const pos: [number, number] = [gps.lat, gps.lon]
-    markerRef.current.setLatLng(pos)
-    polylineRef.current?.setLatLngs(
-      track.map((p) => [p.lat, p.lon] as [number, number])
-    )
+    const pos = { lat: gps.lat, lng: gps.lon }
+    markerRef.current?.setPosition(pos)
+    polylineRef.current?.setPath(track.map((p) => ({ lat: p.lat, lng: p.lon })))
 
     if (!centeredRef.current) {
-      mapRef.current.setView(pos, 15)
+      mapRef.current.setCenter(pos)
+      mapRef.current.setZoom(15)
       centeredRef.current = true
     } else {
       mapRef.current.panTo(pos)
     }
   }, [gps, track])
+
+  if (!API_KEY) {
+    return (
+      <View style={styles.noKey}>
+        <Text style={styles.noKeyIcon}>🗺️</Text>
+        <Text style={styles.noKeyTitle}>API Key Google Maps mancante</Text>
+        <Text style={styles.noKeyDesc}>
+          Aggiungi nel file .env:{'\n'}
+          <Text style={styles.noKeyCode}>EXPO_PUBLIC_GOOGLE_MAPS_KEY=la_tua_chiave</Text>
+        </Text>
+      </View>
+    )
+  }
 
   return (
     <View style={styles.container}>
@@ -76,5 +106,33 @@ export default function GPSMap() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  noKey: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f7f7f7',
+    padding: 32,
+    gap: 12,
+  },
+  noKeyIcon: {
+    fontSize: 48,
+  },
+  noKeyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#222222',
+    textAlign: 'center',
+  },
+  noKeyDesc: {
+    fontSize: 13,
+    color: '#6a6a6a',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  noKeyCode: {
+    fontFamily: 'monospace',
+    color: '#ff385c',
+    fontSize: 12,
   },
 })
