@@ -54,8 +54,8 @@ export default function GPSMap() {
           position: { lat: 44.5, lng: 11.5 },
           icon: {
             url: MARKER_URL,
-            scaledSize: new google.maps.Size(27, 27),
-            anchor: new google.maps.Point(13.5, 27),
+            scaledSize: new google.maps.Size(44, 44),
+            anchor: new google.maps.Point(22, 44),
           },
         })
 
