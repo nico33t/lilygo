@@ -689,7 +689,10 @@ static void sendGPSData() {
 
   // Remote upload via cellular (only live fix)
   if (gps.valid && !gps.stored) {
+    uint32_t unix_ts = remote_gps_to_unix(gps.year, gps.month, gps.day,
+                                          gps.hour, gps.minute, gps.sec);
     remote_send_live(gps.lat, gps.lon, gps.speed_kmh, gps.altitude,
+                     gps.heading, unix_ts,
                      power_bat_mv(), power_state_name(currentPowerState));
   }
 }
@@ -857,7 +860,9 @@ void loop() {
   if (now - lastGPS >= gpsIntervalMs) {
     lastGPS = now;
     readGPS();
-    session_tick(gps.valid, gps.lat, gps.lon, gps.speed_kmh);
+    uint32_t s_unix = remote_gps_to_unix(gps.year, gps.month, gps.day,
+                                         gps.hour, gps.minute, gps.sec);
+    session_tick(gps.valid, gps.lat, gps.lon, gps.speed_kmh, s_unix);
   }
 
   // Send cycle

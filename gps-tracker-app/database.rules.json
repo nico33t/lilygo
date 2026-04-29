@@ -7,6 +7,12 @@
           ".write": "auth != null"
         }
       }
+    },
+    "sessions": {
+      "$deviceId": {
+        ".read":  "auth != null",
+        ".write": "auth != null"
+      }
     }
   }
 }

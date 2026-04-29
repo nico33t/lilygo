@@ -20,10 +20,11 @@ static uint32_t     s_stop_ms         = 0;
 static uint32_t     s_last_point_ms   = 0;
 static float        s_last_lat        = 0, s_last_lon = 0;
 static bool         s_first           = true;
+static uint32_t     s_start_unix      = 0;
 
-static String make_session_id() {
+static String make_session_id(uint32_t unix_ts) {
   char buf[20];
-  snprintf(buf, sizeof(buf), "s%lu", millis());
+  snprintf(buf, sizeof(buf), "s%lu", (unsigned long)(unix_ts ? unix_ts : millis()));
   return String(buf);
 }
 
@@ -37,19 +38,20 @@ static float haversine(float lat1, float lon1, float lat2, float lon2) {
   return R * 2.0f * atan2f(sqrtf(a), sqrtf(1.0f-a));
 }
 
-void session_tick(bool gps_valid, float lat, float lon, float speed_kmh) {
+void session_tick(bool gps_valid, float lat, float lon, float speed_kmh, uint32_t unix_ts) {
   if (!gps_valid) return;
   uint32_t now = millis();
 
   if (!s_active) {
     if (speed_kmh >= SESSION_START_SPEED_KMH) {
-      s_id    = make_session_id();
-      s_stats = {};
-      s_active = true;
-      s_first  = true;
-      s_stop_ms = 0;
+      s_start_unix = unix_ts;
+      s_id         = make_session_id(unix_ts);
+      s_stats      = {};
+      s_active     = true;
+      s_first      = true;
+      s_stop_ms    = 0;
       s_last_point_ms = 0;
-      remote_send_session_start(s_id);
+      remote_send_session_start(s_id, unix_ts);
       Serial.printf("[SES] Sessione avviata: %s\n", s_id.c_str());
     }
     return;
@@ -66,7 +68,7 @@ void session_tick(bool gps_valid, float lat, float lon, float speed_kmh) {
 
   if (now - s_last_point_ms >= TRACK_POINT_INTERVAL_MS) {
     s_last_point_ms = now;
-    remote_send_track_point(s_id, lat, lon, speed_kmh, 0);
+    remote_send_track_point(s_id, lat, lon, speed_kmh, 0, unix_ts);
   }
 
   if (speed_kmh < SESSION_START_SPEED_KMH) {
@@ -74,11 +76,13 @@ void session_tick(bool gps_valid, float lat, float lon, float speed_kmh) {
     if ((now - s_stop_ms) / 1000 >= SESSION_END_STOP_S) {
       float avg = s_stats.avg_speed_cnt > 0
                   ? s_stats.avg_speed_sum / s_stats.avg_speed_cnt : 0;
-      remote_send_session_end(s_id, s_stats.distance_km, s_stats.max_speed_kmh, avg);
+      remote_send_session_end(s_id, s_stats.distance_km, s_stats.max_speed_kmh, avg,
+                              s_start_unix, unix_ts);
       Serial.printf("[SES] Fine: %.2f km, %.0f km/h max\n",
                     s_stats.distance_km, s_stats.max_speed_kmh);
-      s_active  = false;
-      s_stop_ms = 0;
+      s_active     = false;
+      s_stop_ms    = 0;
+      s_start_unix = 0;
     }
   } else {
     s_stop_ms = 0;
