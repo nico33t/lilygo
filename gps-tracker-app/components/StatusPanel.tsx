@@ -1,103 +1,162 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import { useTrackerStore } from '../store/tracker'
+import { C, S } from '../constants/design'
 
-interface StatProps {
+interface CellProps {
   label: string
   value: string
   unit?: string
+  accent?: boolean
 }
 
-function Stat({ label, value, unit }: StatProps) {
+function Cell({ label, value, unit, accent }: CellProps) {
   return (
-    <View style={styles.stat}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue} numberOfLines={1}>
-        {value}
-        {unit ? <Text style={styles.statUnit}> {unit}</Text> : null}
-      </Text>
+    <View style={styles.cell}>
+      <Text style={styles.cellLabel}>{label}</Text>
+      <View style={styles.cellValueRow}>
+        <Text style={[styles.cellValue, accent && styles.cellValueAccent]} numberOfLines={1}>
+          {value}
+        </Text>
+        {unit ? <Text style={styles.cellUnit}>{unit}</Text> : null}
+      </View>
     </View>
   )
 }
 
 export default function StatusPanel() {
   const gps = useTrackerStore((s) => s.gps)
+  const status = useTrackerStore((s) => s.status)
 
   const dash = '—'
   const f = (n: number, d: number) => n.toFixed(d)
+  const hasData = gps != null
+  const hasFix  = gps?.valid === true
+
+  const fixColor = hasFix ? C.green : hasData ? C.orange : C.text3
+  const fixLabel = hasFix
+    ? 'Fix GPS attivo'
+    : status === 'disconnected'
+    ? 'Non connesso'
+    : 'Ricerca fix GPS…'
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.row}
-      >
-        <Stat label="Lat" value={gps?.valid ? f(gps.lat, 6) : dash} unit="°N" />
-        <Stat label="Lon" value={gps?.valid ? f(gps.lon, 6) : dash} unit="°E" />
-        <Stat label="Velocità" value={gps?.valid ? f(gps.speed, 1) : dash} unit="km/h" />
-        <Stat label="Altitudine" value={gps?.valid ? f(gps.alt, 0) : dash} unit="m" />
-        <Stat
+      {/* Fix banner */}
+      <View style={styles.fixRow}>
+        <View style={[styles.fixDot, { backgroundColor: fixColor }]} />
+        <Text style={[styles.fixLabel, { color: fixColor }]}>{fixLabel}</Text>
+        {hasFix && gps.time && gps.time !== 'no-time' && (
+          <Text style={styles.timeText}>{gps.time} UTC</Text>
+        )}
+      </View>
+
+      {/* Stats grid */}
+      <View style={styles.grid}>
+        <Cell
+          label="Latitudine"
+          value={hasFix ? f(gps.lat, 5) : dash}
+          unit="°N"
+          accent={hasFix}
+        />
+        <Cell
+          label="Longitudine"
+          value={hasFix ? f(gps.lon, 5) : dash}
+          unit="°E"
+          accent={hasFix}
+        />
+        <Cell
+          label="Velocità"
+          value={hasFix ? f(gps.speed, 1) : dash}
+          unit="km/h"
+        />
+        <Cell
+          label="Altitudine"
+          value={hasFix ? f(gps.alt, 0) : dash}
+          unit="m"
+        />
+        <Cell
           label="Satelliti"
-          value={gps ? `${gps.usat}/${gps.vsat}` : dash}
+          value={hasData ? `${gps.usat}/${gps.vsat}` : dash}
         />
-        <Stat label="HDOP" value={gps ? f(gps.hdop, 1) : dash} />
-        <Stat
-          label="Fix age"
-          value={
-            gps && gps.last_fix_age_s >= 0
-              ? String(gps.last_fix_age_s)
-              : dash
-          }
-          unit="s"
+        <Cell
+          label="HDOP"
+          value={hasData ? f(gps.hdop, 1) : dash}
         />
-      </ScrollView>
-      {gps?.time && gps.time !== 'no-time' && (
-        <Text style={styles.time}>{gps.time} UTC</Text>
-      )}
+      </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#ffffff',
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#ebebeb',
+    backgroundColor: C.card,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: C.sep,
+    paddingBottom: S.md,
   },
-  row: {
-    paddingHorizontal: 16,
-    gap: 10,
-  },
-  stat: {
+  fixRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f7f7f7',
-    borderRadius: 12,
+    paddingHorizontal: S.md,
+    paddingTop: 10,
+    paddingBottom: 8,
+    gap: 7,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: C.sep,
+  },
+  fixDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  fixLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+  timeText: {
+    fontSize: 11,
+    color: C.text3,
+    fontVariant: ['tabular-nums'],
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: S.sm,
+    paddingTop: S.sm,
+  },
+  cell: {
+    width: '33.33%',
+    paddingHorizontal: S.sm,
     paddingVertical: 8,
-    paddingHorizontal: 14,
-    minWidth: 84,
+    gap: 3,
   },
-  statLabel: {
+  cellLabel: {
     fontSize: 10,
-    color: '#9b9b9b',
+    fontWeight: '500',
+    color: C.text3,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 3,
+    letterSpacing: 0.6,
   },
-  statValue: {
-    fontSize: 15,
+  cellValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 2,
+  },
+  cellValue: {
+    fontSize: 18,
     fontWeight: '700',
-    color: '#222222',
+    color: C.text1,
+    fontVariant: ['tabular-nums'],
   },
-  statUnit: {
-    fontSize: 11,
-    fontWeight: '400',
-    color: '#6a6a6a',
+  cellValueAccent: {
+    color: C.text1,
   },
-  time: {
+  cellUnit: {
     fontSize: 11,
-    color: '#9b9b9b',
-    textAlign: 'center',
-    marginTop: 6,
+    fontWeight: '500',
+    color: C.text2,
+    paddingBottom: 1,
   },
 })

@@ -6,30 +6,41 @@ import ConnectionBadge from '../components/ConnectionBadge'
 import GPSMap from '../components/GPSMap'
 import StatusPanel from '../components/StatusPanel'
 import { useTracker } from '../hooks/useTracker'
+import { C } from '../constants/design'
+
+const IP_RE = /^\d{1,3}(\.\d{1,3}){3}$/
 
 export default function TrackerScreen() {
   const { ip, id } = useLocalSearchParams<{ ip?: string; id?: string }>()
   const deviceId = id ?? ip ?? ''
   const insets = useSafeAreaInsets()
+  const isWifi = IP_RE.test(deviceId)
   useTracker(deviceId)
+
+  const deviceName = 'GPS Tracker'
+  const deviceSub  = isWifi ? deviceId : deviceId.slice(0, 17)
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-          <Ionicons name="arrow-back" size={22} color="#222222" />
+      <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
+        <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={8}>
+          <Ionicons name="arrow-back" size={22} color={C.text1} />
         </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>{deviceId}</Text>
-        <View style={styles.headerRight}>
-          <ConnectionBadge />
-          <Pressable
-            onPress={() => router.push(`/settings?id=${encodeURIComponent(deviceId)}`)}
-            style={styles.settingsBtn}
-            hitSlop={8}
-          >
-            <Ionicons name="settings-outline" size={22} color="#222222" />
-          </Pressable>
+
+        <View style={styles.titleBlock}>
+          <Text style={styles.deviceName} numberOfLines={1}>{deviceName}</Text>
+          <Text style={styles.deviceSub} numberOfLines={1}>{deviceSub}</Text>
         </View>
+
+        <ConnectionBadge />
+
+        <Pressable
+          onPress={() => router.push(`/settings?id=${encodeURIComponent(deviceId)}`)}
+          style={styles.iconBtn}
+          hitSlop={8}
+        >
+          <Ionicons name="settings-outline" size={22} color={C.text1} />
+        </Pressable>
       </View>
 
       <GPSMap />
@@ -42,32 +53,38 @@ export default function TrackerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: C.card,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ebebeb',
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: C.sep,
     gap: 8,
+    backgroundColor: C.card,
   },
-  backBtn: {
-    padding: 4,
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#222222',
-  },
-  headerRight: {
-    flexDirection: 'row',
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'center',
   },
-  settingsBtn: {
-    padding: 4,
+  titleBlock: {
+    flex: 1,
+    gap: 1,
+  },
+  deviceName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: C.text1,
+    letterSpacing: -0.2,
+  },
+  deviceSub: {
+    fontSize: 11,
+    color: C.text3,
+    fontVariant: ['tabular-nums'],
   },
 })
