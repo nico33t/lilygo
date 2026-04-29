@@ -81,6 +81,31 @@ function parseNotification(raw: string) {
   } catch (e) { console.warn('[BLE] base64 decode error:', e) }
 }
 
+function startMonitor() {
+  if (!connectedDevice) return
+  txSubscription?.remove()
+  txSubscription = connectedDevice.monitorCharacteristicForService(
+    BLE_SERVICE_UUID,
+    BLE_TX_UUID,
+    (error, characteristic) => {
+      if (error) {
+        if (error.errorCode === 2) {
+          // Subscription cancelled — restart it if still connected
+          console.log('[BLE] Subscription cancelled, restarting monitor...')
+          setTimeout(() => {
+            if (connectedDevice) startMonitor()
+          }, 300)
+        } else {
+          console.log('[BLE] Monitor error:', error.message, 'code:', error.errorCode)
+        }
+        return
+      }
+      if (!characteristic?.value) return
+      parseNotification(characteristic.value)
+    }
+  )
+}
+
 export async function bleConnect(deviceId: string) {
   if (connectedDevice) {
     const connected = await connectedDevice.isConnected().catch(() => false)
@@ -107,22 +132,7 @@ export async function bleConnect(deviceId: string) {
       scheduleReconnect()
     })
 
-    txSubscription = connectedDevice.monitorCharacteristicForService(
-      BLE_SERVICE_UUID,
-      BLE_TX_UUID,
-      (error, characteristic) => {
-        if (error) {
-          if (error.errorCode === 2) {
-            console.log('[BLE] Subscription cancelled (old connection replaced, reconnecting...)')
-          } else {
-            console.log('[BLE] Monitor error:', error.message, 'code:', error.errorCode)
-          }
-          return
-        }
-        if (!characteristic?.value) return
-        parseNotification(characteristic.value)
-      }
-    )
+    startMonitor()
 
     saveLastDevice(deviceId).catch(() => {})
     useTrackerStore.getState().setStatus('connected')

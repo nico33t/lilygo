@@ -189,7 +189,7 @@ export default function SettingsPanel() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Firmware</Text>
           <Text style={styles.sectionBadge}>
-            {power ? `${(power.bat_mv / 1000).toFixed(2)}V · ` : ''}v0.1.0
+            {power ? `${(power.bat_mv / 1000).toFixed(2)}V · ` : ''}v0.0.2
           </Text>
         </View>
         {ota?.available && (
