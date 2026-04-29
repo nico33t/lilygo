@@ -88,6 +88,7 @@ static GPSData gps;
 static SimData sim;
 static Preferences prefs;
 static bool ledLevel = false;
+static void txJsonChunked(const String& data); // forward decl
 static uint32_t lastGPS    = 0;
 static uint32_t lastSend   = 0;
 static uint32_t lastFixMs  = 0;
@@ -106,7 +107,7 @@ static NimBLEServer*         pServer     = nullptr;
 static NimBLECharacteristic* pTxChar     = nullptr;
 static NimBLECharacteristic* pRxChar     = nullptr;
 static bool                  bleConnected    = false;
-static volatile bool         bleSendImmediate = false;
+static volatile bool         txJsonChunkedImmediate = false;
 
 // ─── Utility ────────────────────────────────────────────────────────────────
 
@@ -351,9 +352,8 @@ static void sendSimData() {
     serializeJson(doc, out);
   }
 
-  pTxChar->setValue(out.c_str());
-  pTxChar->notify();
-  Serial.printf("[BLE] SIM %u byte: %s\n", (unsigned)out.length(), out.c_str());
+  txJsonChunked(out);
+  Serial.printf("[BLE] SIM %u byte\n", (unsigned)out.length());
 }
 
 // ─── NVS fix persistence ───────────────────────────────────────────────────
@@ -389,24 +389,17 @@ static void loadFixFromNVS() {
 class GPSServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* pSrv) override {
     bleConnected     = true;
-    bleSendImmediate = true;
+    txJsonChunkedImmediate = true;
     Serial.println("[BLE] Client connesso");
-    if (pTxChar) {
-      String cfg = buildConfigJson();
-      pTxChar->setValue(cfg.c_str());
-      pTxChar->notify();
-    }
+    if (pTxChar) txJsonChunked(buildConfigJson());
   }
   void onConnect(NimBLEServer* pSrv, ble_gap_conn_desc* desc) override {
     bleConnected     = true;
-    bleSendImmediate = true;
+    txJsonChunkedImmediate = true;
     uint16_t mtu = ble_att_mtu(desc->conn_handle);
-    Serial.printf("[BLE] Client connesso addr=%s mtu=%u\n", NimBLEAddress(desc->peer_ota_addr).toString().c_str(), mtu);
-    if (pTxChar) {
-      String cfg = buildConfigJson();
-      pTxChar->setValue(cfg.c_str());
-      pTxChar->notify();
-    }
+    Serial.printf("[BLE] Client connesso addr=%s mtu=%u\n",
+                  NimBLEAddress(desc->peer_ota_addr).toString().c_str(), mtu);
+    if (pTxChar) txJsonChunked(buildConfigJson());
   }
   void onDisconnect(NimBLEServer* pSrv) override {
     bleConnected = false;
@@ -453,7 +446,7 @@ class RxCallbacks : public NimBLECharacteristicCallbacks {
           if (!bleConnected || !pTxChar) return;
           StaticJsonDocument<64> d; d["type"] = "ota_progress"; d["pct"] = pct;
           String out; serializeJson(d, out);
-          pTxChar->setValue(out.c_str()); pTxChar->notify();
+          txJsonChunked(out);
         });
       }
       return;
@@ -478,9 +471,7 @@ class RxCallbacks : public NimBLECharacteristicCallbacks {
     }
 
     // Rispondi con config aggiornata
-    String cfg = buildConfigJson();
-    pTxChar->setValue(cfg.c_str());
-    pTxChar->notify();
+    txJsonChunked(buildConfigJson());
   }
 };
 
@@ -604,6 +595,20 @@ static void initWiFi() {
 
 #endif // ENABLE_WIFI
 
+// ─── BLE chunked notify ────────────────────────────────────────────────────
+// With MTU=23 the max ATT payload is 20 bytes; we fragment large payloads
+// so the app's msgBuffer can reassemble them into complete JSON objects.
+static void txJsonChunked(const String& data) {
+  if (!bleConnected || !pTxChar) return;
+  const size_t CHUNK = 20;
+  for (size_t i = 0; i < data.length(); i += CHUNK) {
+    String chunk = data.substring(i, min(i + CHUNK, data.length()));
+    pTxChar->setValue(chunk.c_str());
+    pTxChar->notify();
+    delay(10);
+  }
+}
+
 // ─── GPS send ──────────────────────────────────────────────────────────────
 
 static void sendGPSData() {
@@ -631,14 +636,8 @@ static void sendGPSData() {
   String out;
   serializeJson(doc, out);
 
-  // BLE notify
-  if (bleConnected && pTxChar) {
-    uint16_t connHandle = pServer ? pServer->getPeerInfo(0).getConnHandle() : 0xFFFF;
-    uint16_t mtu = (connHandle != 0xFFFF) ? ble_att_mtu(connHandle) : 0;
-    pTxChar->setValue(out.c_str());
-    pTxChar->notify();
-    Serial.printf("[BLE] GPS %u byte mtu=%u\n", (unsigned)out.length(), mtu);
-  }
+  txJsonChunked(out);
+  if (bleConnected) Serial.printf("[BLE] GPS %u byte\n", (unsigned)out.length());
 
 #if ENABLE_WIFI
   wsServer.broadcastTXT(out);
@@ -658,7 +657,7 @@ static void sendPowerData() {
   doc["mode"]   = power_state_name(currentPowerState);
   doc["bat_mv"] = power_bat_mv();
   String out; serializeJson(doc, out);
-  pTxChar->setValue(out.c_str()); pTxChar->notify();
+  txJsonChunked(out);
 }
 
 static void sendOtaAvailable() {
@@ -669,7 +668,7 @@ static void sendOtaAvailable() {
   doc["version"]   = otaInfo.version;
   doc["changelog"] = otaInfo.changelog;
   String out; serializeJson(doc, out);
-  pTxChar->setValue(out.c_str()); pTxChar->notify();
+  txJsonChunked(out);
 }
 
 // ─── GPS read ──────────────────────────────────────────────────────────────
@@ -798,8 +797,8 @@ void loop() {
   sendIntervalMs    = pcfg.send_interval_ms;
 
   // When BLE client just connected, send immediately and cap intervals to 5s
-  if (bleSendImmediate) {
-    bleSendImmediate = false;
+  if (txJsonChunkedImmediate) {
+    txJsonChunkedImmediate = false;
     lastGPS  = 0;
     lastSend = 0;
   }
