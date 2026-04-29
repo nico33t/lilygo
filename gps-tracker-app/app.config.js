@@ -4,7 +4,7 @@ const REVERSED_CLIENT_ID = process.env.REVERSED_CLIENT_ID ?? 'com.googleusercont
 
 /** @type {import('expo/config').ExpoConfig} */
 module.exports = {
-  name: IS_DEV ? 'GPS Tracker (Dev)' : 'GPS Tracker',
+  name: IS_DEV ? 'Trackly (Dev)' : 'Trackly',
   slug: 'gps-tracker',
   version: '0.0.2',
   orientation: 'default',
@@ -54,10 +54,14 @@ module.exports = {
     buildNumber: '1',
     infoPlist: {
       NSLocationWhenInUseUsageDescription:
-        'GPS Tracker shows your position on the map.',
+        'Trackly shows your position on the map.',
       NSLocationAlwaysUsageDescription:
-        'GPS Tracker needs location to track your route.',
+        'Trackly needs location to track your route.',
       CFBundleURLTypes: [{ CFBundleURLSchemes: [REVERSED_CLIENT_ID] }],
+    },
+    entitlements: {
+      'aps-environment': IS_DEV ? 'development' : 'production',
+      'com.apple.developer.applesignin': ['Default'],
     },
   },
   android: {
