@@ -37,7 +37,8 @@ export default function StatusPanel() {
   const sim    = useTrackerStore((s) => s.sim)
   const power  = useTrackerStore((s) => s.power)
   const status = useTrackerStore((s) => s.status)
-  const lastRx = useTrackerStore((s) => s.lastRx)
+  const lastRx   = useTrackerStore((s) => s.lastRx)
+  const bleError = useTrackerStore((s) => s.bleError)
   const [rxAge, setRxAge] = useState<string>('—')
   const [simRunning, setSimRunning] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -83,7 +84,9 @@ export default function StatusPanel() {
       )}
       {/* Debug: last BLE rx + simulation */}
       <View style={styles.debugRow}>
-        <Text style={styles.debugText}>BLE RX: {rxAge}</Text>
+        <Text style={styles.debugText}>
+          BLE RX: {rxAge}{bleError ? `  ⚠ ${bleError}` : ''}
+        </Text>
         <Pressable
           onPress={() => {
             if (simRunning) { stopSimulation(); setSimRunning(false) }

@@ -83,23 +83,28 @@ function parseNotification(raw: string) {
   } catch (e) { console.warn('[BLE] base64 decode error:', e) }
 }
 
+function onMonitorError(error: { errorCode: number; message: string }) {
+  if (error.errorCode === 201) return // device disconnected
+  const msg = `err ${error.errorCode}: ${error.message}`
+  useTrackerStore.getState().setBleError(msg)
+  console.log('[BLE] Monitor', msg, '— restarting in 500ms')
+  setTimeout(() => { if (connectedDevice) startMonitor() }, 500)
+}
+
+function monitorCallback(error: { errorCode: number; message: string } | null, characteristic: { value?: string | null } | null) {
+  if (error) { onMonitorError(error); return }
+  if (!characteristic?.value) return
+  useTrackerStore.getState().setBleError(null)
+  parseNotification(characteristic.value)
+}
+
 function startMonitor() {
   if (!connectedDevice) return
   txSubscription?.remove()
   txSubscription = connectedDevice.monitorCharacteristicForService(
     BLE_SERVICE_UUID,
     BLE_TX_UUID,
-    (error, characteristic) => {
-      if (error) {
-        // 201 = device disconnected — onDisconnected will handle reconnect
-        if (error.errorCode === 201) return
-        console.log('[BLE] Monitor error code', error.errorCode, '—', error.message, '— restarting in 500ms')
-        setTimeout(() => { if (connectedDevice) startMonitor() }, 500)
-        return
-      }
-      if (!characteristic?.value) return
-      parseNotification(characteristic.value)
-    }
+    monitorCallback as any
   )
 }
 
@@ -132,7 +137,7 @@ export async function bleConnect(deviceId: string) {
       scheduleReconnect()
     })
 
-    startMonitor()
+    setTimeout(() => startMonitor(), 500)
 
     saveLastDevice(deviceId).catch(() => {})
     useTrackerStore.getState().setStatus('connected')
