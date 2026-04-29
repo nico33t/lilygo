@@ -112,7 +112,11 @@ export async function bleConnect(deviceId: string) {
       BLE_TX_UUID,
       (error, characteristic) => {
         if (error) {
-          console.warn('[BLE] Monitor error:', error.message, error.errorCode)
+          if (error.errorCode === 2) {
+            console.log('[BLE] Subscription cancelled (old connection replaced, reconnecting...)')
+          } else {
+            console.log('[BLE] Monitor error:', error.message, 'code:', error.errorCode)
+          }
           return
         }
         if (!characteristic?.value) return
