@@ -77,7 +77,7 @@ struct GPSData {
 };
 
 struct SimData {
-  int    rssi_raw = 99;   // 0-31 CSQ raw, 99=unknown
+  int    rssi_dbm = 0;    // signal strength in dBm; 0 = unknown
   String iccid;
   String op;
   String net_type;        // LTE-M, NB-IoT, GSM, NO SERVICE
@@ -249,7 +249,7 @@ static String buildConfigJson() {
 static void readSimData() {
   String resp;
 
-  // Signal quality: +CSQ: <rssi>,<ber>
+  // Signal quality via CSQ (works on GSM; on LTE-M may return 99)
   modem.sendAT("+CSQ");
   resp = "";
   if (modem.waitResponse(2000, resp) == 1) {
@@ -257,7 +257,10 @@ static void readSimData() {
     if (idx >= 0) {
       String data = resp.substring(idx + 5);
       data.trim();
-      sim.rssi_raw = getField(data, 1).toInt();
+      int csq = getField(data, 1).toInt();
+      if (csq > 0 && csq < 99) {
+        sim.rssi_dbm = -113 + 2 * csq;
+      }
     }
   }
 
@@ -265,11 +268,9 @@ static void readSimData() {
   modem.sendAT("+CCID");
   resp = "";
   if (modem.waitResponse(3000, resp) == 1) {
-    // Try with prefix first, then raw (SIM7080 omits prefix)
     int idx = resp.indexOf("+CCID:");
     String icc = idx >= 0 ? resp.substring(idx + 6) : resp;
     icc.trim();
-    // Remove AT echo and "OK"
     int nl = icc.indexOf('\n');
     if (nl >= 0) icc = icc.substring(0, nl);
     icc.trim();
@@ -278,7 +279,10 @@ static void readSimData() {
     if (icc.length() >= 10) sim.iccid = icc;
   }
 
-  // Operator: +COPS: <mode>,<format>,"<op>",<act>
+  // Force long alphanumeric format, then query operator
+  // +COPS=3,0 sets format without changing operator selection
+  modem.sendAT("+COPS=3,0");
+  modem.waitResponse(1000);
   modem.sendAT("+COPS?");
   resp = "";
   if (modem.waitResponse(5000, resp) == 1) {
@@ -290,7 +294,8 @@ static void readSimData() {
     }
   }
 
-  // Network type + registration: +CPSI: <sys_mode>,<op_mode>,...
+  // Network type + registration + LTE-M signal from +CPSI:
+  // Format: <sys>,<mode>,<MCC-MNC>,<TAC>,<cell>,<pcell>,<band>,<earfcn>,<dl>,<RSRQ>,<RSRP>,<RSSI>,<SINR>
   modem.sendAT("+CPSI?");
   resp = "";
   if (modem.waitResponse(3000, resp) == 1) {
@@ -298,9 +303,9 @@ static void readSimData() {
     if (idx >= 0) {
       String data = resp.substring(idx + 6);
       data.trim();
-      String sys  = getField(data, 1);
-      String mode = getField(data, 2);
-      sys.trim(); mode.trim();
+      String sys = getField(data, 1);
+      sys.trim();
+
       if (sys.indexOf("CAT-M") >= 0 || sys.indexOf("CATM") >= 0) {
         sim.net_type = "LTE-M";
       } else if (sys.indexOf("NB") >= 0) {
@@ -310,20 +315,37 @@ static void readSimData() {
       } else {
         sim.net_type = sys.length() > 12 ? sys.substring(0, 12) : sys;
       }
-      // "NO SERVICE" = not registered; anything else (CAT-M1, NB-IoT, GSM...) = registered
       sim.registered = (sys != "NO SERVICE") && sys.length() > 0;
+
+      // LTE-M / NB-IoT: field 12 = RSSI in dBm; use when CSQ returned 99
+      if (sim.rssi_dbm == 0 &&
+          (sys.indexOf("CAT-M") >= 0 || sys.indexOf("NB") >= 0)) {
+        String rssiStr = getField(data, 12);
+        rssiStr.trim();
+        if (rssiStr.startsWith("-")) {
+          sim.rssi_dbm = rssiStr.toInt();
+        }
+      }
+
+      // MCC-MNC as fallback operator when COPS returned nothing
+      if (sim.op.length() == 0) {
+        String mccMnc = getField(data, 3);
+        mccMnc.trim();
+        if (mccMnc.length() > 0 && mccMnc.indexOf('-') >= 0) {
+          sim.op = mccMnc;
+        }
+      }
     }
   }
 
-  // Retry registrazione se non registrato
   if (!sim.registered) {
     Serial.println("[SIM] Non registrato, retry COPS=0...");
     modem.sendAT("+COPS=0");
     modem.waitResponse(8000);
   }
 
-  Serial.printf("[SIM] csq=%d iccid=%s op=%s net=%s reg=%d\n",
-    sim.rssi_raw, sim.iccid.c_str(), sim.op.c_str(), sim.net_type.c_str(), sim.registered);
+  Serial.printf("[SIM] rssi=%d iccid=%s op=%s net=%s reg=%d\n",
+    sim.rssi_dbm, sim.iccid.c_str(), sim.op.c_str(), sim.net_type.c_str(), sim.registered);
 }
 
 static void sendSimData() {
@@ -333,8 +355,8 @@ static void sendSimData() {
   doc["type"] = "sim";
   doc["reg"]  = sim.registered;
 
-  if (sim.rssi_raw != 99 && sim.rssi_raw > 0) {
-    doc["rssi"] = -113 + 2 * sim.rssi_raw;
+  if (sim.rssi_dbm != 0) {
+    doc["rssi"] = sim.rssi_dbm;
   } else {
     doc["rssi"] = nullptr;
   }
