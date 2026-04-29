@@ -14,15 +14,17 @@ static bool       s_stopped      = false;
 void power_init(int adc_pin, int threshold_mv) {
   s_adc_pin      = adc_pin;
   s_threshold_mv = threshold_mv;
-  analogSetAttenuation(ADC_11db);
-  pinMode(s_adc_pin, INPUT);
+  if (adc_pin >= 0) {
+    analogSetAttenuation(ADC_11db);
+    pinMode(adc_pin, INPUT);
+  }
 }
 
 static bool detect_12v() {
+  if (s_adc_pin < 0) return false;
   int sum = 0;
   for (int i = 0; i < 4; i++) { sum += analogReadMilliVolts(s_adc_pin); delay(1); }
-  int mv = sum / 4;
-  return mv >= s_threshold_mv;
+  return (sum / 4) >= s_threshold_mv;
 }
 
 PowerState power_tick(float speed_kmh, PowerConfig* cfg) {

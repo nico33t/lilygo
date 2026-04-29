@@ -1,6 +1,6 @@
 import Slider from '@react-native-community/slider'
 import { useRef, useState } from 'react'
-import { Animated, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
+import { Animated, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import { bleSendCommand } from '../services/bleService'
 import { sendCommand as wsSendCommand } from '../services/wsService'
@@ -29,6 +29,8 @@ export default function SettingsPanel() {
   const toastOpacity = useRef(new Animated.Value(0)).current
   const [toastVisible, setToastVisible] = useState(false)
   const [restarting, setRestarting] = useState(false)
+  const [apn, setApn] = useState('em')
+  const [apnSent, setApnSent] = useState(false)
 
   const showToast = () => {
     setToastVisible(true)
@@ -154,6 +156,32 @@ export default function SettingsPanel() {
             onValueChange={setProximity}
             trackColor={{ true: '#ff385c', false: undefined }}
           />
+        </View>
+
+        {/* APN SIM */}
+        <View style={styles.apnRow}>
+          <TextInput
+            style={[styles.apnInput, !connected && styles.apnInputDisabled]}
+            value={apn}
+            onChangeText={(t) => { setApn(t); setApnSent(false) }}
+            placeholder="APN (es. em)"
+            placeholderTextColor="#aaa"
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={connected}
+          />
+          <Pressable
+            style={[styles.apnBtn, (!connected || apn.trim().length === 0) && styles.applyBtnDisabled]}
+            onPress={() => {
+              if (!connected || apn.trim().length === 0) return
+              sendCommand({ cmd: 'set_apn', value: apn.trim() })
+              setApnSent(true)
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+            }}
+            disabled={!connected || apn.trim().length === 0}
+          >
+            <Text style={styles.apnBtnText}>{apnSent ? '✓ Inviato' : 'Imposta APN'}</Text>
+          </Pressable>
         </View>
       </View>
 
@@ -329,4 +357,36 @@ const styles = StyleSheet.create({
   otaChangelog: { fontSize: 13, color: '#444', lineHeight: 18 },
   otaProgressBar: { height: 8, backgroundColor: '#ddd', borderRadius: 4, overflow: 'hidden' },
   otaProgressFill: { height: '100%' as any, backgroundColor: '#007AFF', borderRadius: 4 },
+  apnRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  apnInput: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#d1d1d6',
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: '#222',
+    backgroundColor: '#f9f9f9',
+  },
+  apnInputDisabled: {
+    opacity: 0.45,
+  },
+  apnBtn: {
+    backgroundColor: '#ff385c',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  apnBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+  },
 })

@@ -185,6 +185,19 @@ static void initModem() {
   sendDiag("E0", 1000);
   sendDiag("+CGMM", 1000);
   sendDiag("+CGMR", 1000);
+
+  // Network config: LTE-M + NB-IoT, bande Italia (20=800MHz, 3=1800MHz, 8=900MHz)
+  sendDiag("+CNMP=38",           2000);  // LTE only
+  sendDiag("+CMNB=3",            2000);  // LTE-M + NB-IoT
+  sendDiag("+CBANDCFG=\"CAT-M\",20,3,8",  3000);
+  sendDiag("+CBANDCFG=\"NB-IOT\",20,3,8", 3000);
+
+  // APN Emnify
+  sendDiag("+CGDCONT=1,\"IP\",\"em\"", 2000);
+
+  // Registrazione automatica rete
+  sendDiag("+COPS=0", 5000);
+  Serial.println("[MODEM] Config rete completata, attesa registrazione...");
 }
 
 // ─── GPS ───────────────────────────────────────────────────────────────────
@@ -245,19 +258,21 @@ static void readSimData() {
     }
   }
 
-  // ICCID: +CCID: <iccid>
+  // ICCID — SIM7080 risponde senza prefisso +CCID:
   modem.sendAT("+CCID");
   resp = "";
   if (modem.waitResponse(3000, resp) == 1) {
+    // Try with prefix first, then raw (SIM7080 omits prefix)
     int idx = resp.indexOf("+CCID:");
-    if (idx >= 0) {
-      String icc = resp.substring(idx + 6);
-      icc.trim();
-      // Strip trailing 'F' padding
-      while (icc.length() > 0 && (icc[icc.length()-1] == 'F' || icc[icc.length()-1] == 'f'))
-        icc.remove(icc.length() - 1);
-      sim.iccid = icc;
-    }
+    String icc = idx >= 0 ? resp.substring(idx + 6) : resp;
+    icc.trim();
+    // Remove AT echo and "OK"
+    int nl = icc.indexOf('\n');
+    if (nl >= 0) icc = icc.substring(0, nl);
+    icc.trim();
+    while (icc.length() > 0 && (icc[icc.length()-1] == 'F' || icc[icc.length()-1] == 'f'))
+      icc.remove(icc.length() - 1);
+    if (icc.length() >= 10) sim.iccid = icc;
   }
 
   // Operator: +COPS: <mode>,<format>,"<op>",<act>
@@ -292,8 +307,16 @@ static void readSimData() {
       } else {
         sim.net_type = sys.length() > 12 ? sys.substring(0, 12) : sys;
       }
-      sim.registered = (mode == "Online");
+      // "NO SERVICE" = not registered; anything else (CAT-M1, NB-IoT, GSM...) = registered
+      sim.registered = (sys != "NO SERVICE") && sys.length() > 0;
     }
+  }
+
+  // Retry registrazione se non registrato
+  if (!sim.registered) {
+    Serial.println("[SIM] Non registrato, retry COPS=0...");
+    modem.sendAT("+COPS=0");
+    modem.waitResponse(8000);
   }
 
   Serial.printf("[SIM] csq=%d iccid=%s op=%s net=%s reg=%d\n",
@@ -437,9 +460,16 @@ class RxCallbacks : public NimBLECharacteristicCallbacks {
       if (strlen(val) > 0) { ota_set_url(String(val)); Serial.printf("[BLE] OTA URL: %s\n", val); }
       return;
     } else if (strcmp(c, "set_power_mode") == 0) {
-      // 0=auto (handled by power_tick), 1=force vehicle, 2=force battery
-      // For now store in NVS for future use — power_tick remains authoritative
       Serial.printf("[BLE] Power mode override: %d\n", (int)(cmd["value"] | 0));
+      return;
+    } else if (strcmp(c, "set_apn") == 0) {
+      String apn = cmd["value"] | String("");
+      if (apn.length() > 0) {
+        String atCmd = "+CGDCONT=1,\"IP\",\"" + apn + "\"";
+        sendDiag(atCmd.c_str(), 2000);
+        sendDiag("+COPS=0", 8000);
+        Serial.printf("[BLE] APN impostato: %s\n", apn.c_str());
+      }
       return;
     } else if (strcmp(c, "get_config") != 0) {
       return; // unknown command

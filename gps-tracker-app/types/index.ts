@@ -48,7 +48,7 @@ export interface OtaStatus {
 export interface WSCommand {
   cmd: 'set_interval' | 'set_gnss_mode' | 'get_config' | 'restart_gps'
       | 'set_backend_url' | 'set_backend_token' | 'set_ota_url' | 'start_ota'
-      | 'set_power_mode'
+      | 'set_power_mode' | 'set_apn'
   value?: number | string
 }
 
