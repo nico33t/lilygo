@@ -91,15 +91,10 @@ function startMonitor() {
     BLE_TX_UUID,
     (error, characteristic) => {
       if (error) {
-        if (error.errorCode === 2) {
-          // Subscription cancelled — restart it if still connected
-          console.log('[BLE] Subscription cancelled, restarting monitor...')
-          setTimeout(() => {
-            if (connectedDevice) startMonitor()
-          }, 300)
-        } else {
-          console.log('[BLE] Monitor error:', error.message, 'code:', error.errorCode)
-        }
+        // 201 = device disconnected — onDisconnected will handle reconnect
+        if (error.errorCode === 201) return
+        console.log('[BLE] Monitor error code', error.errorCode, '—', error.message, '— restarting in 500ms')
+        setTimeout(() => { if (connectedDevice) startMonitor() }, 500)
         return
       }
       if (!characteristic?.value) return
@@ -174,4 +169,31 @@ export function bleDisconnect() {
 
 export function getBleState(): Promise<State> {
   return bleManager.state()
+}
+
+let _simTimer: ReturnType<typeof setInterval> | null = null
+export function startSimulation() {
+  if (_simTimer) return
+  let t = 0
+  const store = useTrackerStore.getState()
+  store.setStatus('connected')
+  _simTimer = setInterval(() => {
+    t++
+    store.setLastRx(Date.now())
+    store.setGPS({
+      valid: true, stored: false,
+      lat: 45.4642 + Math.sin(t * 0.1) * 0.002,
+      lon: 9.1900  + Math.cos(t * 0.1) * 0.002,
+      speed: 12 + Math.random() * 5,
+      alt: 150 + Math.random() * 10,
+      vsat: 8, usat: 6,
+      acc: 3.5, hdop: 1.2,
+      time: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    })
+    store.setPower({ mode: 'MOVING', bat_mv: 4100 })
+    store.setSim({ rssi: -72, iccid: '12345678', op: 'SIM (sim)', net: 'LTE-M', reg: true })
+  }, 2000)
+}
+export function stopSimulation() {
+  if (_simTimer) { clearInterval(_simTimer); _simTimer = null }
 }

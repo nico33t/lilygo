@@ -1,7 +1,8 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useTrackerStore } from '../store/tracker'
 import { C, S } from '../constants/design'
 import { useEffect, useRef, useState } from 'react'
+import { startSimulation, stopSimulation } from '../services/bleService'
 
 function signalColor(rssi: number | null): string {
   if (rssi == null) return C.text3
@@ -38,6 +39,7 @@ export default function StatusPanel() {
   const status = useTrackerStore((s) => s.status)
   const lastRx = useTrackerStore((s) => s.lastRx)
   const [rxAge, setRxAge] = useState<string>('—')
+  const [simRunning, setSimRunning] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -79,9 +81,18 @@ export default function StatusPanel() {
           <Text style={styles.powerBat}>{(power.bat_mv / 1000).toFixed(2)} V</Text>
         </View>
       )}
-      {/* Debug: last BLE rx */}
+      {/* Debug: last BLE rx + simulation */}
       <View style={styles.debugRow}>
         <Text style={styles.debugText}>BLE RX: {rxAge}</Text>
+        <Pressable
+          onPress={() => {
+            if (simRunning) { stopSimulation(); setSimRunning(false) }
+            else { startSimulation(); setSimRunning(true) }
+          }}
+          style={[styles.simBtn, simRunning && styles.simBtnActive]}
+        >
+          <Text style={styles.simBtnText}>{simRunning ? 'Stop SIM' : 'Simula'}</Text>
+        </Pressable>
       </View>
 
       {/* Fix banner */}
@@ -254,14 +265,34 @@ const styles = StyleSheet.create({
   },
   debugRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: S.md,
     paddingTop: 4,
     paddingBottom: 2,
+    gap: 8,
   },
   debugText: {
+    flex: 1,
     fontSize: 10,
     color: C.text3,
     fontVariant: ['tabular-nums'],
+  },
+  simBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#f2f2f7',
+    borderWidth: 1,
+    borderColor: '#d1d1d6',
+  },
+  simBtnActive: {
+    backgroundColor: '#fff0f3',
+    borderColor: '#ff385c',
+  },
+  simBtnText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: C.text2,
   },
   simSep: {
     height: StyleSheet.hairlineWidth,
