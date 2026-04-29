@@ -15,6 +15,7 @@ import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { Device } from 'react-native-ble-plx'
 import { bleManager, BleState } from '../services/bleService'
+import { getLastDevice } from '../services/bleCache'
 import { BLE_SERVICE_UUID, BLE_DEVICE_NAME, APP_VERSION } from '../constants/tracker'
 import { DiscoveredDevice, scanSubnet } from '../services/discovery'
 import DeviceCard from '../components/DeviceCard'
@@ -132,9 +133,14 @@ export default function DiscoveryScreen() {
   const [showManual, setShowManual] = useState(false)
   const [manualVal, setManualVal] = useState('')
   const [bleOff, setBleOff] = useState(false)
+  const [lastDevice, setLastDevice] = useState<string | null>(null)
 
   const wifiAbortRef = useRef<AbortController | null>(null)
   const bleScanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    getLastDevice().then(setLastDevice).catch(() => {})
+  }, [])
 
   useEffect(() => {
     const sub = bleManager.onStateChange((state) => {
@@ -259,6 +265,29 @@ export default function DiscoveryScreen() {
           ))}
         </View>
       </View>
+
+      {/* ── Last device quick-connect ──────────────────────────── */}
+      {mode === 'ble' && !bleOff && lastDevice && (
+        <Pressable
+          style={({ pressed }) => [styles.lastDeviceCard, pressed && { opacity: 0.75 }]}
+          onPress={() => {
+            bleManager.stopDeviceScan()
+            router.push(`/tracker?id=${encodeURIComponent(lastDevice)}`)
+          }}
+        >
+          <View style={styles.lastDeviceIcon}>
+            <Ionicons name="bluetooth" size={16} color={C.blue} />
+          </View>
+          <View style={styles.lastDeviceInfo}>
+            <Text style={styles.lastDeviceLabel}>Ultimo dispositivo</Text>
+            <Text style={styles.lastDeviceId} numberOfLines={1}>{lastDevice.slice(0, 17)}</Text>
+          </View>
+          <View style={styles.lastDeviceConnect}>
+            <Ionicons name="flash" size={13} color={C.card} />
+            <Text style={styles.lastDeviceConnectText}>Connetti</Text>
+          </View>
+        </Pressable>
+      )}
 
       {/* ── BLE off warning ────────────────────────────────────── */}
       {mode === 'ble' && bleOff && (
@@ -445,6 +474,50 @@ const styles = StyleSheet.create({
   segBtnActive: { backgroundColor: C.accent },
   segText: { fontSize: 13, fontWeight: '600', color: C.text2 },
   segTextActive: { color: C.card },
+
+  lastDeviceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.card,
+    marginHorizontal: S.lg,
+    marginBottom: S.sm,
+    borderRadius: R.lg,
+    padding: 12,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.sep,
+  },
+  lastDeviceIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: R.md,
+    backgroundColor: '#007AFF12',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lastDeviceInfo: { flex: 1, gap: 1 },
+  lastDeviceLabel: { fontSize: 11, fontWeight: '600', color: C.text3, textTransform: 'uppercase', letterSpacing: 0.4 },
+  lastDeviceId: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.text1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  lastDeviceConnect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.blue,
+    borderRadius: R.md,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  lastDeviceConnectText: { fontSize: 12, fontWeight: '700', color: C.card },
 
   warningCard: {
     flexDirection: 'row',

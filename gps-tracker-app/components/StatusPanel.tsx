@@ -2,6 +2,13 @@ import { StyleSheet, Text, View } from 'react-native'
 import { useTrackerStore } from '../store/tracker'
 import { C, S } from '../constants/design'
 
+function signalColor(rssi: number | null): string {
+  if (rssi == null) return C.text3
+  if (rssi >= -70) return C.green
+  if (rssi >= -85) return C.orange
+  return C.red
+}
+
 interface CellProps {
   label: string
   value: string
@@ -24,23 +31,40 @@ function Cell({ label, value, unit, accent }: CellProps) {
 }
 
 export default function StatusPanel() {
-  const gps = useTrackerStore((s) => s.gps)
+  const gps   = useTrackerStore((s) => s.gps)
+  const sim   = useTrackerStore((s) => s.sim)
+  const power = useTrackerStore((s) => s.power)
   const status = useTrackerStore((s) => s.status)
 
   const dash = '—'
   const f = (n: number, d: number) => n.toFixed(d)
-  const hasData = gps != null
-  const hasFix  = gps?.valid === true
+  const hasData   = gps != null
+  const hasFix    = gps?.valid === true && gps?.stored !== true
+  const isStored  = hasData && !hasFix && gps!.stored === true && gps!.lat !== 0
+  const hasCoords = hasFix || isStored
 
-  const fixColor = hasFix ? C.green : hasData ? C.orange : C.text3
+  const fixColor = hasFix ? C.green : isStored ? C.orange : hasData ? C.orange : C.text3
   const fixLabel = hasFix
     ? 'Fix GPS attivo'
+    : isStored
+    ? 'Ultima posizione nota'
     : status === 'disconnected'
     ? 'Non connesso'
     : 'Ricerca fix GPS…'
 
   return (
     <View style={styles.container}>
+      {/* Power mode row */}
+      {power && (
+        <View style={styles.powerRow}>
+          <Text style={styles.powerMode}>{
+            power.mode === 'VEHICLE' ? '⚡ Veicolo' :
+            power.mode === 'MOVING'  ? '▶ In movimento' :
+            power.mode === 'IDLE'    ? '⏸ Fermo' : '💤 Parcheggiato'
+          }</Text>
+          <Text style={styles.powerBat}>{(power.bat_mv / 1000).toFixed(2)} V</Text>
+        </View>
+      )}
       {/* Fix banner */}
       <View style={styles.fixRow}>
         <View style={[styles.fixDot, { backgroundColor: fixColor }]} />
@@ -54,24 +78,24 @@ export default function StatusPanel() {
       <View style={styles.grid}>
         <Cell
           label="Latitudine"
-          value={hasFix ? f(gps.lat, 5) : dash}
+          value={hasCoords ? f(gps!.lat, 5) : dash}
           unit="°N"
           accent={hasFix}
         />
         <Cell
           label="Longitudine"
-          value={hasFix ? f(gps.lon, 5) : dash}
+          value={hasCoords ? f(gps!.lon, 5) : dash}
           unit="°E"
           accent={hasFix}
         />
         <Cell
           label="Velocità"
-          value={hasFix ? f(gps.speed, 1) : dash}
+          value={hasFix ? f(gps!.speed, 1) : dash}
           unit="km/h"
         />
         <Cell
           label="Altitudine"
-          value={hasFix ? f(gps.alt, 0) : dash}
+          value={hasCoords ? f(gps!.alt, 0) : dash}
           unit="m"
         />
         <Cell
@@ -81,6 +105,35 @@ export default function StatusPanel() {
         <Cell
           label="HDOP"
           value={hasData ? f(gps.hdop, 1) : dash}
+        />
+      </View>
+
+      {/* SIM section */}
+      <View style={styles.simSep} />
+      <View style={styles.fixRow}>
+        <View style={[styles.fixDot, { backgroundColor: sim ? (sim.reg ? C.green : C.orange) : C.text3 }]} />
+        <Text style={[styles.fixLabel, { color: sim ? (sim.reg ? C.green : C.orange) : C.text3 }]}>
+          {sim ? (sim.reg ? 'SIM registrata' : 'SIM non registrata') : 'Nessun dato SIM'}
+        </Text>
+        {sim?.net ? (
+          <View style={[styles.netBadge, { backgroundColor: sim.reg ? C.green + '22' : C.orange + '22' }]}>
+            <Text style={[styles.netBadgeText, { color: sim.reg ? C.green : C.orange }]}>{sim.net}</Text>
+          </View>
+        ) : null}
+      </View>
+      <View style={styles.grid}>
+        <Cell
+          label="Gestore"
+          value={sim?.op ?? dash}
+        />
+        <Cell
+          label="Segnale"
+          value={sim?.rssi != null ? `${sim.rssi}` : dash}
+          unit={sim?.rssi != null ? 'dBm' : undefined}
+        />
+        <Cell
+          label="ICCID"
+          value={sim?.iccid ? `…${sim.iccid.slice(-8)}` : dash}
         />
       </View>
     </View>
@@ -158,5 +211,42 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: C.text2,
     paddingBottom: 1,
+  },
+  powerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: S.md,
+    paddingTop: 8,
+    paddingBottom: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: C.sep,
+  },
+  powerMode: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.text2,
+  },
+  powerBat: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.text1,
+    fontVariant: ['tabular-nums'],
+  },
+  simSep: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.sep,
+    marginHorizontal: S.md,
+    marginTop: S.xs,
+  },
+  netBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  netBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 })

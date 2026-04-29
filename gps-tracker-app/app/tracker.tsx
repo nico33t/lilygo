@@ -1,11 +1,15 @@
 import { Ionicons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
+import { useEffect } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import ConnectionBadge from '../components/ConnectionBadge'
 import GPSMap from '../components/GPSMap'
 import StatusPanel from '../components/StatusPanel'
 import { useTracker } from '../hooks/useTracker'
+import { useRemote } from '../hooks/useRemote'
+import { useTrackerStore } from '../store/tracker'
+import { onBleDisconnectedUnexpectedly, cancelDisconnectAlarm } from '../services/proximityService'
 import { C } from '../constants/design'
 
 const IP_RE = /^\d{1,3}(\.\d{1,3}){3}$/
@@ -16,6 +20,15 @@ export default function TrackerScreen() {
   const insets = useSafeAreaInsets()
   const isWifi = IP_RE.test(deviceId)
   useTracker(deviceId)
+
+  const status           = useTrackerStore((s) => s.status)
+  const proximityEnabled = useTrackerStore((s) => s.proximityAlarmEnabled)
+  useRemote(deviceId, status === 'disconnected')
+
+  useEffect(() => {
+    if (status === 'disconnected') onBleDisconnectedUnexpectedly(proximityEnabled)
+    else cancelDisconnectAlarm()
+  }, [status, proximityEnabled])
 
   const deviceName = 'GPS Tracker'
   const deviceSub  = isWifi ? deviceId : deviceId.slice(0, 17)
@@ -34,6 +47,13 @@ export default function TrackerScreen() {
 
         <ConnectionBadge />
 
+        <Pressable
+          onPress={() => router.push(`/history?id=${encodeURIComponent(deviceId)}`)}
+          style={styles.iconBtn}
+          hitSlop={8}
+        >
+          <Ionicons name="time-outline" size={22} color={C.text1} />
+        </Pressable>
         <Pressable
           onPress={() => router.push(`/settings?id=${encodeURIComponent(deviceId)}`)}
           style={styles.iconBtn}

@@ -13,10 +13,11 @@ export default function GPSMap() {
   const gps = useTrackerStore((s) => s.gps)
   const track = useTrackerStore((s) => s.track)
 
-  const region: Region = gps?.valid
+  const hasPosition = (gps?.valid || gps?.stored) && gps?.lat !== 0
+  const region: Region = hasPosition
     ? {
-        latitude: gps.lat,
-        longitude: gps.lon,
+        latitude: gps!.lat,
+        longitude: gps!.lon,
         latitudeDelta: 0.008,
         longitudeDelta: 0.008,
       }
@@ -28,10 +29,11 @@ export default function GPSMap() {
       region={region}
       provider={Platform.OS === 'ios' ? PROVIDER_GOOGLE : PROVIDER_GOOGLE}
     >
-      {gps?.valid && (
+      {hasPosition && (
         <Marker
-          coordinate={{ latitude: gps.lat, longitude: gps.lon }}
+          coordinate={{ latitude: gps!.lat, longitude: gps!.lon }}
           image={require('../../assets/marker.png')}
+          opacity={gps!.stored && !gps!.valid ? 0.5 : 1}
         />
       )}
       {track.length > 1 && (

@@ -10,7 +10,7 @@ module.exports = {
   scheme: 'gpstracker',
   web: {
     bundler: 'metro',
-    output: 'static',
+    output: 'single',
   },
   plugins: [
     'expo-router',
@@ -31,6 +31,7 @@ module.exports = {
           'Allow $(PRODUCT_NAME) to connect to Bluetooth GPS devices',
       },
     ],
+    'expo-notifications',
   ],
   experiments: {
     typedRoutes: true,

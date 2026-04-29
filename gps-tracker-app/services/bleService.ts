@@ -1,7 +1,8 @@
 import { BleManager, Device, State } from 'react-native-ble-plx'
 import { useTrackerStore } from '../store/tracker'
-import { GPSData, TrackerConfig, WSCommand, WSConfigMessage } from '../types'
+import { GPSData, OtaStatus, PowerData, SimData, TrackerConfig, WSCommand, WSConfigMessage } from '../types'
 import { BLE_SERVICE_UUID, BLE_RX_UUID, BLE_TX_UUID, RECONNECT_DELAY_MS } from '../constants/tracker'
+import { saveLastDevice } from './bleCache'
 
 export { State as BleState }
 export const bleManager = new BleManager()
@@ -51,13 +52,23 @@ function parseNotification(raw: string) {
       i = 0
 
       try {
-        const msg = JSON.parse(json) as GPSData | WSConfigMessage
-        if ('type' in msg && (msg as WSConfigMessage).type === 'config') {
+        const msg = JSON.parse(json) as any
+        const type = msg?.type as string | undefined
+        if (type === 'config') {
           const cfg = msg as WSConfigMessage
           useTrackerStore.getState().setConfig({
             interval_ms: cfg.interval_ms,
             gnss_mode: cfg.gnss_mode,
           } as TrackerConfig)
+        } else if (type === 'sim') {
+          useTrackerStore.getState().setSim(msg as SimData)
+        } else if (type === 'power') {
+          useTrackerStore.getState().setPower(msg as unknown as PowerData)
+        } else if (type === 'ota') {
+          useTrackerStore.getState().setOta(msg as unknown as OtaStatus)
+        } else if (type === 'ota_progress') {
+          const current = useTrackerStore.getState().ota
+          if (current) useTrackerStore.getState().setOta({ ...current, progress: (msg as any).pct })
         } else {
           useTrackerStore.getState().setGPS(msg as GPSData)
         }
@@ -96,11 +107,16 @@ export async function bleConnect(deviceId: string) {
       BLE_SERVICE_UUID,
       BLE_TX_UUID,
       (error, characteristic) => {
-        if (error || !characteristic?.value) return
+        if (error) {
+          console.warn('[BLE] Monitor error:', error.message, error.errorCode)
+          return
+        }
+        if (!characteristic?.value) return
         parseNotification(characteristic.value)
       }
     )
 
+    saveLastDevice(deviceId).catch(() => {})
     useTrackerStore.getState().setStatus('connected')
     bleSendCommand({ cmd: 'get_config' })
   } catch {

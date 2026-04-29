@@ -7,12 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		111BCD80EF7BBB0D8E468203 /* libPods-GPSTracker.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2C4C2B675DB202D46CDBCF61 /* libPods-GPSTracker.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		417C55BBBBC2F4BB2729A01A /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EAF75AED46477931B43DB98 /* ExpoModulesProvider.swift */; };
+		45C3324C3BCD2DC179A17AD5 /* libPods-GPSTracker.a in Frameworks */ = {isa = PBXBuildFile; fileRef = EE40F290AB41C23378616AEF /* libPods-GPSTracker.a */; };
+		92DBADE198BD7D778494DD49 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A794DBF270F0A5A4F3D14D24 /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
-		E1CE0EF4176BACC81DAA501A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2F547E72838EBD98E0EF9A6C /* PrivacyInfo.xcprivacy */; };
+		CA32D9F270A196F403D05B54 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 938D5A58A4BBE8417DBCBD94 /* PrivacyInfo.xcprivacy */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
@@ -20,14 +20,14 @@
 		13B07F961A680F5B00A75B9A /* GPSTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GPSTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = GPSTracker/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = GPSTracker/Info.plist; sourceTree = "<group>"; };
-		2C4C2B675DB202D46CDBCF61 /* libPods-GPSTracker.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-GPSTracker.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		2F547E72838EBD98E0EF9A6C /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = GPSTracker/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		317A6F51F772673EB6DE8FA4 /* Pods-GPSTracker.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-GPSTracker.release.xcconfig"; path = "Target Support Files/Pods-GPSTracker/Pods-GPSTracker.release.xcconfig"; sourceTree = "<group>"; };
-		3FFDBA11BFFE57F8CE10AD73 /* Pods-GPSTracker.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-GPSTracker.debug.xcconfig"; path = "Target Support Files/Pods-GPSTracker/Pods-GPSTracker.debug.xcconfig"; sourceTree = "<group>"; };
-		6EAF75AED46477931B43DB98 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-GPSTracker/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		2520D5D401547CF9D21C77EE /* Pods-GPSTracker.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-GPSTracker.release.xcconfig"; path = "Target Support Files/Pods-GPSTracker/Pods-GPSTracker.release.xcconfig"; sourceTree = "<group>"; };
+		938D5A58A4BBE8417DBCBD94 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = GPSTracker/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A794DBF270F0A5A4F3D14D24 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-GPSTracker/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = GPSTracker/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
+		BC0E33ACA39C278451B0862E /* Pods-GPSTracker.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-GPSTracker.debug.xcconfig"; path = "Target Support Files/Pods-GPSTracker/Pods-GPSTracker.debug.xcconfig"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		EE40F290AB41C23378616AEF /* libPods-GPSTracker.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-GPSTracker.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = GPSTracker/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* GPSTracker-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "GPSTracker-Bridging-Header.h"; path = "GPSTracker/GPSTracker-Bridging-Header.h"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -37,7 +37,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				111BCD80EF7BBB0D8E468203 /* libPods-GPSTracker.a in Frameworks */,
+				45C3324C3BCD2DC179A17AD5 /* libPods-GPSTracker.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -53,16 +53,16 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				2F547E72838EBD98E0EF9A6C /* PrivacyInfo.xcprivacy */,
+				938D5A58A4BBE8417DBCBD94 /* PrivacyInfo.xcprivacy */,
 			);
 			name = GPSTracker;
 			sourceTree = "<group>";
 		};
-		21C68768CEFEE602D1CE9D57 /* Pods */ = {
+		1E73FA460438B8BD6D8FE373 /* Pods */ = {
 			isa = PBXGroup;
 			children = (
-				3FFDBA11BFFE57F8CE10AD73 /* Pods-GPSTracker.debug.xcconfig */,
-				317A6F51F772673EB6DE8FA4 /* Pods-GPSTracker.release.xcconfig */,
+				BC0E33ACA39C278451B0862E /* Pods-GPSTracker.debug.xcconfig */,
+				2520D5D401547CF9D21C77EE /* Pods-GPSTracker.release.xcconfig */,
 			);
 			name = Pods;
 			path = Pods;
@@ -72,9 +72,17 @@
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				2C4C2B675DB202D46CDBCF61 /* libPods-GPSTracker.a */,
+				EE40F290AB41C23378616AEF /* libPods-GPSTracker.a */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		5CE18FAA9B8C5DEE9F21CCAD /* GPSTracker */ = {
+			isa = PBXGroup;
+			children = (
+				A794DBF270F0A5A4F3D14D24 /* ExpoModulesProvider.swift */,
+			);
+			name = GPSTracker;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -91,8 +99,8 @@
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				21C68768CEFEE602D1CE9D57 /* Pods */,
-				C148002F7E4C10979CF099B3 /* ExpoModulesProviders */,
+				1E73FA460438B8BD6D8FE373 /* Pods */,
+				994BFF207C3A8E203768A279 /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -107,12 +115,12 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		94E6D2F341B23E55B38CBBB1 /* GPSTracker */ = {
+		994BFF207C3A8E203768A279 /* ExpoModulesProviders */ = {
 			isa = PBXGroup;
 			children = (
-				6EAF75AED46477931B43DB98 /* ExpoModulesProvider.swift */,
+				5CE18FAA9B8C5DEE9F21CCAD /* GPSTracker */,
 			);
-			name = GPSTracker;
+			name = ExpoModulesProviders;
 			sourceTree = "<group>";
 		};
 		BB2F792B24A3F905000567C9 /* Supporting */ = {
@@ -124,14 +132,6 @@
 			path = GPSTracker/Supporting;
 			sourceTree = "<group>";
 		};
-		C148002F7E4C10979CF099B3 /* ExpoModulesProviders */ = {
-			isa = PBXGroup;
-			children = (
-				94E6D2F341B23E55B38CBBB1 /* GPSTracker */,
-			);
-			name = ExpoModulesProviders;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -140,13 +140,13 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "GPSTracker" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				95CCB0CB45179C3FD3DA41C5 /* [Expo] Configure project */,
+				5E12950947BDAC4BD7933DC4 /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				B392F47408738E32293D92F9 /* [CP] Embed Pods Frameworks */,
+				C709847F2212785E994289B2 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -198,7 +198,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				E1CE0EF4176BACC81DAA501A /* PrivacyInfo.xcprivacy in Resources */,
+				CA32D9F270A196F403D05B54 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -244,6 +244,30 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
+		5E12950947BDAC4BD7933DC4 /* [Expo] Configure project */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/.xcode.env",
+				"$(SRCROOT)/.xcode.env.local",
+				"$(SRCROOT)/GPSTracker/GPSTracker.entitlements",
+				"$(SRCROOT)/Pods/Target Support Files/Pods-GPSTracker/expo-configure-project.sh",
+			);
+			name = "[Expo] Configure project";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Pods/Target Support Files/Pods-GPSTracker/ExpoModulesProvider.swift",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-GPSTracker/expo-configure-project.sh\"\n";
+		};
 		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -278,31 +302,7 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-GPSTracker/Pods-GPSTracker-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		95CCB0CB45179C3FD3DA41C5 /* [Expo] Configure project */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(SRCROOT)/.xcode.env",
-				"$(SRCROOT)/.xcode.env.local",
-				"$(SRCROOT)/GPSTracker/GPSTracker.entitlements",
-				"$(SRCROOT)/Pods/Target Support Files/Pods-GPSTracker/expo-configure-project.sh",
-			);
-			name = "[Expo] Configure project";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(SRCROOT)/Pods/Target Support Files/Pods-GPSTracker/ExpoModulesProvider.swift",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-GPSTracker/expo-configure-project.sh\"\n";
-		};
-		B392F47408738E32293D92F9 /* [CP] Embed Pods Frameworks */ = {
+		C709847F2212785E994289B2 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -332,7 +332,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				417C55BBBBC2F4BB2729A01A /* ExpoModulesProvider.swift in Sources */,
+				92DBADE198BD7D778494DD49 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -341,7 +341,7 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 3FFDBA11BFFE57F8CE10AD73 /* Pods-GPSTracker.debug.xcconfig */;
+			baseConfigurationReference = BC0E33ACA39C278451B0862E /* Pods-GPSTracker.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
@@ -380,7 +380,7 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 317A6F51F772673EB6DE8FA4 /* Pods-GPSTracker.release.xcconfig */;
+			baseConfigurationReference = 2520D5D401547CF9D21C77EE /* Pods-GPSTracker.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;

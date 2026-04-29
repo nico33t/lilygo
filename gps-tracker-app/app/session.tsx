@@ -1,0 +1,101 @@
+import { useEffect, useState } from 'react'
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from 'react-native-maps'
+import Slider from '@react-native-community/slider'
+import { router, useLocalSearchParams } from 'expo-router'
+import { Ionicons } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { getSessionPoints } from '../services/historyService'
+import type { TrackPoint } from '../types'
+import { C, S } from '../constants/design'
+
+export default function SessionScreen() {
+  const { id, device } = useLocalSearchParams<{ id: string; device: string }>()
+  const insets = useSafeAreaInsets()
+  const [points, setPoints] = useState<TrackPoint[]>([])
+  const [loading, setLoading] = useState(true)
+  const [scrubIndex, setScrubIndex] = useState(0)
+
+  useEffect(() => {
+    getSessionPoints(id, device).then((pts) => {
+      setPoints(pts)
+      setScrubIndex(pts.length - 1)
+      setLoading(false)
+    })
+  }, [id, device])
+
+  const coords = points.map((p) => ({ latitude: p.lat, longitude: p.lon }))
+  const current = points[scrubIndex]
+
+  return (
+    <View style={{ flex: 1, backgroundColor: C.card }}>
+      <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
+        <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={8}>
+          <Ionicons name="arrow-back" size={22} color={C.text1} />
+        </Pressable>
+        <Text style={styles.title}>Dettaglio percorso</Text>
+      </View>
+
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 60 }} color={C.accent} />
+      ) : (
+        <>
+          <MapView
+            style={{ flex: 1 }}
+            provider={Platform.OS === 'ios' ? PROVIDER_GOOGLE : PROVIDER_GOOGLE}
+            initialRegion={coords.length > 0 ? {
+              latitude: coords[0].latitude,
+              longitude: coords[0].longitude,
+              latitudeDelta: 0.05,
+              longitudeDelta: 0.05,
+            } : undefined}
+          >
+            {coords.length > 1 && (
+              <Polyline coordinates={coords} strokeColor={C.accent} strokeWidth={3} />
+            )}
+            {current && (
+              <Marker
+                coordinate={{ latitude: current.lat, longitude: current.lon }}
+                image={require('../assets/marker.png')}
+              />
+            )}
+          </MapView>
+
+          <View style={[styles.panel, { paddingBottom: insets.bottom + S.md }]}>
+            <Text style={styles.pointInfo}>
+              Punto {scrubIndex + 1} / {points.length}
+            </Text>
+            <Slider
+              style={{ width: '100%' }}
+              minimumValue={0}
+              maximumValue={Math.max(points.length - 1, 1)}
+              step={1}
+              value={scrubIndex}
+              onValueChange={(v) => setScrubIndex(Math.round(v))}
+              minimumTrackTintColor={C.accent}
+              maximumTrackTintColor={C.sep}
+              thumbTintColor={C.accent}
+            />
+          </View>
+        </>
+      )}
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    gap: 8,
+    backgroundColor: C.card,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: C.sep,
+  },
+  iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 16, fontWeight: '700', color: C.text1 },
+  panel: { backgroundColor: C.card, paddingHorizontal: S.md, paddingTop: S.sm },
+  pointInfo: { fontSize: 12, color: C.text3, textAlign: 'center', marginBottom: 4 },
+})

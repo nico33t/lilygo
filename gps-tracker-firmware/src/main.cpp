@@ -1,7 +1,13 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <NimBLEDevice.h>
+#include <Preferences.h>
 #include <Wire.h>
+#include "firmware_config.h"
+#include "power.h"
+#include "remote.h"
+#include "session.h"
+#include "ota.h"
 
 #define XPOWERS_CHIP_AXP2101
 #include "XPowersLib.h"
@@ -32,8 +38,6 @@
 #define BLE_RX_UUID      "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 #define BLE_TX_UUID      "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
 #define BLE_DEVICE_NAME  "GPS-Tracker"
-
-#define FIRMWARE_VERSION "0.0.2"
 
 #define USE_MODEM_DEBUGGER 1
 
@@ -69,14 +73,33 @@ struct GPSData {
   int minute = 0;
   int sec = 0;
   bool valid = false;
+  bool stored = false; // true = loaded from NVS, not live
+};
+
+struct SimData {
+  int    rssi_raw = 99;   // 0-31 CSQ raw, 99=unknown
+  String iccid;
+  String op;
+  String net_type;        // LTE-M, NB-IoT, GSM, NO SERVICE
+  bool   registered = false;
 };
 
 static GPSData gps;
+static SimData sim;
+static Preferences prefs;
 static bool ledLevel = false;
-static uint32_t lastGPS = 0;
-static uint32_t lastFixMs = 0;
-static uint32_t gpsIntervalMs = 2000;
-static int gnssMode = 1; // 0=GPS only, 1=GPS+BeiDou
+static uint32_t lastGPS    = 0;
+static uint32_t lastSend   = 0;
+static uint32_t lastFixMs  = 0;
+static uint32_t lastSimMs  = 0;
+static uint32_t lastOtaCheck = 0;
+static uint32_t gpsIntervalMs  = 2000;
+static uint32_t sendIntervalMs = 5000;
+static int gnssMode = 1;
+static PowerState currentPowerState = PowerState::MOVING;
+static OtaInfo    otaInfo;
+#define SIM_INTERVAL_MS      30000
+#define OTA_CHECK_INTERVAL_MS (24UL * 3600 * 1000)
 
 // BLE state
 static NimBLEServer*         pServer     = nullptr;
@@ -204,13 +227,153 @@ static String buildConfigJson() {
   return out;
 }
 
+// ─── SIM / Cellular ────────────────────────────────────────────────────────
+
+static void readSimData() {
+  String resp;
+
+  // Signal quality: +CSQ: <rssi>,<ber>
+  modem.sendAT("+CSQ");
+  resp = "";
+  if (modem.waitResponse(2000, resp) == 1) {
+    int idx = resp.indexOf("+CSQ:");
+    if (idx >= 0) {
+      String data = resp.substring(idx + 5);
+      data.trim();
+      sim.rssi_raw = getField(data, 1).toInt();
+    }
+  }
+
+  // ICCID: +CCID: <iccid>
+  modem.sendAT("+CCID");
+  resp = "";
+  if (modem.waitResponse(3000, resp) == 1) {
+    int idx = resp.indexOf("+CCID:");
+    if (idx >= 0) {
+      String icc = resp.substring(idx + 6);
+      icc.trim();
+      // Strip trailing 'F' padding
+      while (icc.length() > 0 && (icc[icc.length()-1] == 'F' || icc[icc.length()-1] == 'f'))
+        icc.remove(icc.length() - 1);
+      sim.iccid = icc;
+    }
+  }
+
+  // Operator: +COPS: <mode>,<format>,"<op>",<act>
+  modem.sendAT("+COPS?");
+  resp = "";
+  if (modem.waitResponse(5000, resp) == 1) {
+    int q1 = resp.indexOf('"');
+    int q2 = q1 >= 0 ? resp.indexOf('"', q1 + 1) : -1;
+    if (q1 >= 0 && q2 > q1) {
+      sim.op = resp.substring(q1 + 1, q2);
+      if (sim.op.length() > 16) sim.op = sim.op.substring(0, 16);
+    }
+  }
+
+  // Network type + registration: +CPSI: <sys_mode>,<op_mode>,...
+  modem.sendAT("+CPSI?");
+  resp = "";
+  if (modem.waitResponse(3000, resp) == 1) {
+    int idx = resp.indexOf("+CPSI:");
+    if (idx >= 0) {
+      String data = resp.substring(idx + 6);
+      data.trim();
+      String sys  = getField(data, 1);
+      String mode = getField(data, 2);
+      sys.trim(); mode.trim();
+      if (sys.indexOf("CAT-M") >= 0 || sys.indexOf("CATM") >= 0) {
+        sim.net_type = "LTE-M";
+      } else if (sys.indexOf("NB") >= 0) {
+        sim.net_type = "NB-IoT";
+      } else if (sys.startsWith("GSM")) {
+        sim.net_type = "GSM";
+      } else {
+        sim.net_type = sys.length() > 12 ? sys.substring(0, 12) : sys;
+      }
+      sim.registered = (mode == "Online");
+    }
+  }
+
+  Serial.printf("[SIM] csq=%d iccid=%s op=%s net=%s reg=%d\n",
+    sim.rssi_raw, sim.iccid.c_str(), sim.op.c_str(), sim.net_type.c_str(), sim.registered);
+}
+
+static void sendSimData() {
+  if (!bleConnected || !pTxChar) return;
+
+  StaticJsonDocument<192> doc;
+  doc["type"] = "sim";
+  doc["reg"]  = sim.registered;
+
+  if (sim.rssi_raw != 99 && sim.rssi_raw > 0) {
+    doc["rssi"] = -113 + 2 * sim.rssi_raw;
+  } else {
+    doc["rssi"] = nullptr;
+  }
+
+  if (sim.iccid.length() > 0) doc["iccid"] = sim.iccid;
+  if (sim.op.length() > 0)    doc["op"]    = sim.op;
+  if (sim.net_type.length() > 0) doc["net"] = sim.net_type;
+
+  String out;
+  serializeJson(doc, out);
+
+  // Safety: if somehow too large, drop ICCID
+  if (out.length() > 180) {
+    doc.remove("iccid");
+    out = "";
+    serializeJson(doc, out);
+  }
+
+  pTxChar->setValue(out.c_str());
+  pTxChar->notify();
+  Serial.printf("[BLE] SIM %u byte: %s\n", (unsigned)out.length(), out.c_str());
+}
+
+// ─── NVS fix persistence ───────────────────────────────────────────────────
+
+static void saveFixToNVS() {
+  prefs.begin("gps", false);
+  prefs.putFloat("lat", gps.lat);
+  prefs.putFloat("lon", gps.lon);
+  prefs.putFloat("alt", gps.altitude);
+  prefs.putFloat("spd", gps.speed_kmh);
+  prefs.putBool("valid", true);
+  prefs.end();
+  Serial.printf("[NVS] Fix salvato: %.6f, %.6f\n", gps.lat, gps.lon);
+}
+
+static void loadFixFromNVS() {
+  prefs.begin("gps", true);
+  bool hasStored = prefs.getBool("valid", false);
+  if (hasStored) {
+    gps.lat       = prefs.getFloat("lat", 0);
+    gps.lon       = prefs.getFloat("lon", 0);
+    gps.altitude  = prefs.getFloat("alt", 0);
+    gps.speed_kmh = prefs.getFloat("spd", 0);
+    gps.valid     = true;
+    gps.stored    = true;
+    Serial.printf("[NVS] Ultimo fix: %.6f, %.6f\n", gps.lat, gps.lon);
+  }
+  prefs.end();
+}
+
 // ─── BLE callbacks ─────────────────────────────────────────────────────────
 
-class BLEServerCallbacks : public NimBLEServerCallbacks {
+class GPSServerCallbacks : public NimBLEServerCallbacks {
+  void onConnect(NimBLEServer* pSrv) override {
+    bleConnected = true;
+    Serial.println("[BLE] Client connesso");
+    if (pTxChar) {
+      String cfg = buildConfigJson();
+      pTxChar->setValue(cfg.c_str());
+      pTxChar->notify();
+    }
+  }
   void onConnect(NimBLEServer* pSrv, ble_gap_conn_desc* desc) override {
     bleConnected = true;
-    Serial.printf("[BLE] Client connesso: %s\n", NimBLEAddress(desc->peer_ota_addr).toString().c_str());
-    // Invia configurazione appena connesso
+    Serial.printf("[BLE] Client connesso (addr): %s\n", NimBLEAddress(desc->peer_ota_addr).toString().c_str());
     if (pTxChar) {
       String cfg = buildConfigJson();
       pTxChar->setValue(cfg.c_str());
@@ -243,6 +406,38 @@ class RxCallbacks : public NimBLECharacteristicCallbacks {
       gnssMode = constrain(mode, 0, 1);
       applyGnssMode();
       Serial.printf("[BLE] Modalità GNSS: %d\n", gnssMode);
+    } else if (strcmp(c, "restart_gps") == 0) {
+      Serial.println("[BLE] Riavvio GPS richiesto");
+      initGPS();
+      return;
+    } else if (strcmp(c, "set_backend_url") == 0) {
+      const char* val = cmd["value"] | "";
+      if (strlen(val) > 0) { remote_set_url(String(val)); Serial.printf("[BLE] Backend URL: %s\n", val); }
+      return;
+    } else if (strcmp(c, "set_backend_token") == 0) {
+      const char* val = cmd["value"] | "";
+      if (strlen(val) > 0) { remote_set_token(String(val)); Serial.println("[BLE] Token aggiornato"); }
+      return;
+    } else if (strcmp(c, "start_ota") == 0) {
+      if (otaInfo.available) {
+        Serial.println("[BLE] OTA confermato, avvio...");
+        ota_apply(otaInfo, [](int pct) {
+          if (!bleConnected || !pTxChar) return;
+          StaticJsonDocument<64> d; d["type"] = "ota_progress"; d["pct"] = pct;
+          String out; serializeJson(d, out);
+          pTxChar->setValue(out.c_str()); pTxChar->notify();
+        });
+      }
+      return;
+    } else if (strcmp(c, "set_ota_url") == 0) {
+      const char* val = cmd["value"] | "";
+      if (strlen(val) > 0) { ota_set_url(String(val)); Serial.printf("[BLE] OTA URL: %s\n", val); }
+      return;
+    } else if (strcmp(c, "set_power_mode") == 0) {
+      // 0=auto (handled by power_tick), 1=force vehicle, 2=force battery
+      // For now store in NVS for future use — power_tick remains authoritative
+      Serial.printf("[BLE] Power mode override: %d\n", (int)(cmd["value"] | 0));
+      return;
     } else if (strcmp(c, "get_config") != 0) {
       return; // unknown command
     }
@@ -260,7 +455,7 @@ static void initBLE() {
   NimBLEDevice::setMTU(512);
 
   pServer = NimBLEDevice::createServer();
-  pServer->setCallbacks(new BLEServerCallbacks());
+  pServer->setCallbacks(new GPSServerCallbacks());
 
   NimBLEService* pService = pServer->createService(BLE_SERVICE_UUID);
 
@@ -280,9 +475,24 @@ static void initBLE() {
   pAdv->addServiceUUID(BLE_SERVICE_UUID);
   pAdv->setScanResponse(true);
   pAdv->setMinPreferred(0x06);
-  pAdv->start();
 
-  Serial.printf("[BLE] Advertising: %s\n", BLE_DEVICE_NAME);
+  // iBeacon payload: UUID A1B2C3D4-E5F6-A1B2-C3D4-E5F6A1B2C3D4
+  static const uint8_t ibeacon_payload[] = {
+    0x4C, 0x00,                                       // Apple company ID
+    0x02, 0x15,                                       // iBeacon type/length
+    0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6,
+    0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6,
+    0xA1, 0xB2, 0xC3, 0xD4,                           // UUID
+    0x00, 0x01,                                       // major
+    0x00, 0x01,                                       // minor
+    0xC5,                                             // TX power
+  };
+  NimBLEAdvertisementData advData;
+  advData.setManufacturerData(std::string((char*)ibeacon_payload, sizeof(ibeacon_payload)));
+  pAdv->setAdvertisementData(advData);
+
+  pAdv->start();
+  Serial.printf("[BLE] Advertising: %s (iBeacon attivo)\n", BLE_DEVICE_NAME);
 }
 
 // ─── WiFi + Web ────────────────────────────────────────────────────────────
@@ -363,8 +573,9 @@ static void initWiFi() {
 
 static void sendGPSData() {
   StaticJsonDocument<384> doc;
-  doc["valid"] = gps.valid;
-  doc["lat"]   = gps.lat;
+  doc["valid"]  = gps.valid;
+  doc["stored"] = gps.stored;
+  doc["lat"]    = gps.lat;
   doc["lon"]   = gps.lon;
   doc["speed"] = gps.speed_kmh;
   doc["alt"]   = gps.altitude;
@@ -372,7 +583,6 @@ static void sendGPSData() {
   doc["usat"]  = gps.usat;
   doc["acc"]   = gps.accuracy;
   doc["hdop"]  = gps.accuracy;
-  doc["last_fix_age_s"] = lastFixMs > 0 ? (long)((millis() - lastFixMs) / 1000) : -1;
 
   char t[24];
   if (gps.year > 0) {
@@ -390,11 +600,39 @@ static void sendGPSData() {
   if (bleConnected && pTxChar) {
     pTxChar->setValue(out.c_str());
     pTxChar->notify();
+    Serial.printf("[BLE] GPS %u byte\n", (unsigned)out.length());
   }
 
 #if ENABLE_WIFI
   wsServer.broadcastTXT(out);
 #endif
+
+  // Remote upload via cellular (only live fix)
+  if (gps.valid && !gps.stored) {
+    remote_send_live(gps.lat, gps.lon, gps.speed_kmh, gps.altitude,
+                     power_bat_mv(), power_state_name(currentPowerState));
+  }
+}
+
+static void sendPowerData() {
+  if (!bleConnected || !pTxChar) return;
+  StaticJsonDocument<128> doc;
+  doc["type"]   = "power";
+  doc["mode"]   = power_state_name(currentPowerState);
+  doc["bat_mv"] = power_bat_mv();
+  String out; serializeJson(doc, out);
+  pTxChar->setValue(out.c_str()); pTxChar->notify();
+}
+
+static void sendOtaAvailable() {
+  if (!bleConnected || !pTxChar) return;
+  StaticJsonDocument<256> doc;
+  doc["type"]      = "ota";
+  doc["available"] = otaInfo.available;
+  doc["version"]   = otaInfo.version;
+  doc["changelog"] = otaInfo.changelog;
+  String out; serializeJson(doc, out);
+  pTxChar->setValue(out.c_str()); pTxChar->notify();
 }
 
 // ─── GPS read ──────────────────────────────────────────────────────────────
@@ -465,11 +703,13 @@ static void readGPS() {
 
   if (hasFix) {
     gps.valid     = true;
+    gps.stored    = false;
     gps.lat       = latStr.toFloat();
     gps.lon       = lonStr.toFloat();
     gps.altitude  = altStr.toFloat();
     gps.speed_kmh = spdStr.toFloat() * 1.852f;
     lastFixMs     = millis();
+    saveFixToNVS();
     PMU.setChargingLedMode(XPOWERS_CHG_LED_BLINK_4HZ);
     Serial.printf("[GPS] FIX! %.6f, %.6f  sat=%d/%d  %.1fkm/h  %.1fm  hdop=%.1f\n",
                   gps.lat, gps.lon, satUsed, satView, gps.speed_kmh, gps.altitude, gps.accuracy);
@@ -490,9 +730,12 @@ void setup() {
   Serial.printf("Modalità: %s\n", ENABLE_WIFI ? "WiFi + BLE" : "BLE");
 
   initPMU();
+  power_init(V12_ADC_PIN, V12_THRESHOLD_MV);
   initModem();
+  remote_init();
   initGPS();
   initBLE();
+  loadFixFromNVS();
 
 #if ENABLE_WIFI
   initWiFi();
@@ -510,9 +753,36 @@ void loop() {
 #endif
 
   uint32_t now = millis();
+
+  // Update power state and derive intervals
+  PowerConfig pcfg;
+  currentPowerState = power_tick(gps.speed_kmh, &pcfg);
+  gpsIntervalMs     = pcfg.gps_interval_ms;
+  sendIntervalMs    = pcfg.send_interval_ms;
+
+  // GPS read
   if (now - lastGPS >= gpsIntervalMs) {
     lastGPS = now;
     readGPS();
+    session_tick(gps.valid, gps.lat, gps.lon, gps.speed_kmh);
+  }
+
+  // Send cycle
+  if (now - lastSend >= sendIntervalMs) {
+    lastSend = now;
     sendGPSData();
+    sendPowerData();
+
+    if (now - lastSimMs >= SIM_INTERVAL_MS) {
+      lastSimMs = now;
+      readSimData();
+      sendSimData();
+    }
+
+    // OTA check once every 24h
+    if (now - lastOtaCheck >= OTA_CHECK_INTERVAL_MS || lastOtaCheck == 0) {
+      lastOtaCheck = now;
+      if (ota_check(&otaInfo)) sendOtaAvailable();
+    }
   }
 }

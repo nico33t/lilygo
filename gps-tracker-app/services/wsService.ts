@@ -78,6 +78,6 @@ export function disconnect() {
   }
   ws?.close()
   ws = null
-  useTrackerStore.getState().setDeviceIp(null)
+  useTrackerStore.getState().setDeviceId(null)
   useTrackerStore.getState().setStatus('disconnected')
 }
