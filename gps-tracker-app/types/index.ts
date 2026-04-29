@@ -31,6 +31,7 @@ export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected'
 export interface TrackerConfig {
   interval_ms: number
   gnss_mode: number
+  fw_version?: string
 }
 
 export interface PowerData {
@@ -56,4 +57,5 @@ export interface WSConfigMessage {
   type: 'config'
   interval_ms: number
   gnss_mode: number
+  fw_version?: string
 }

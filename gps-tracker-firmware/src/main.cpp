@@ -232,10 +232,11 @@ static void applyGnssMode() {
 }
 
 static String buildConfigJson() {
-  StaticJsonDocument<128> cfg;
+  StaticJsonDocument<160> cfg;
   cfg["type"]        = "config";
   cfg["interval_ms"] = gpsIntervalMs;
   cfg["gnss_mode"]   = gnssMode;
+  cfg["fw_version"]  = FIRMWARE_VERSION;
   String out;
   serializeJson(cfg, out);
   return out;

@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native'
 import { useTrackerStore } from '../store/tracker'
 import { C, S } from '../constants/design'
+import { useEffect, useRef, useState } from 'react'
 
 function signalColor(rssi: number | null): string {
   if (rssi == null) return C.text3
@@ -31,10 +32,23 @@ function Cell({ label, value, unit, accent }: CellProps) {
 }
 
 export default function StatusPanel() {
-  const gps   = useTrackerStore((s) => s.gps)
-  const sim   = useTrackerStore((s) => s.sim)
-  const power = useTrackerStore((s) => s.power)
+  const gps    = useTrackerStore((s) => s.gps)
+  const sim    = useTrackerStore((s) => s.sim)
+  const power  = useTrackerStore((s) => s.power)
   const status = useTrackerStore((s) => s.status)
+  const lastRx = useTrackerStore((s) => s.lastRx)
+  const [rxAge, setRxAge] = useState<string>('—')
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => {
+      if (!lastRx) { setRxAge('—'); return }
+      const s = Math.floor((Date.now() - lastRx) / 1000)
+      setRxAge(s < 60 ? `${s}s fa` : `${Math.floor(s / 60)}m fa`)
+    }, 1000)
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [lastRx])
 
   const dash = '—'
   const f = (n: number, d: number) => n.toFixed(d)
@@ -65,6 +79,11 @@ export default function StatusPanel() {
           <Text style={styles.powerBat}>{(power.bat_mv / 1000).toFixed(2)} V</Text>
         </View>
       )}
+      {/* Debug: last BLE rx */}
+      <View style={styles.debugRow}>
+        <Text style={styles.debugText}>BLE RX: {rxAge}</Text>
+      </View>
+
       {/* Fix banner */}
       <View style={styles.fixRow}>
         <View style={[styles.fixDot, { backgroundColor: fixColor }]} />
@@ -231,6 +250,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: C.text1,
+    fontVariant: ['tabular-nums'],
+  },
+  debugRow: {
+    flexDirection: 'row',
+    paddingHorizontal: S.md,
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  debugText: {
+    fontSize: 10,
+    color: C.text3,
     fontVariant: ['tabular-nums'],
   },
   simSep: {

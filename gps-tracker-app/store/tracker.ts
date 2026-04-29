@@ -21,6 +21,7 @@ interface TrackerState {
   deviceId: string | null
   remoteConnected: boolean
   proximityAlarmEnabled: boolean
+  lastRx: number | null
   setGPS: (data: GPSData) => void
   setSim: (data: SimData) => void
   setPower: (data: PowerData) => void
@@ -31,6 +32,7 @@ interface TrackerState {
   clearTrack: () => void
   setRemoteConnected: (v: boolean) => void
   setProximityAlarm: (v: boolean) => void
+  setLastRx: (t: number) => void
 }
 
 export const useTrackerStore = create<TrackerState>((set) => ({
@@ -44,6 +46,7 @@ export const useTrackerStore = create<TrackerState>((set) => ({
   deviceId: null,
   remoteConnected: false,
   proximityAlarmEnabled: true,
+  lastRx: null,
 
   setSim: (data) => set({ sim: data }),
   setPower: (data) => set({ power: data }),
@@ -63,4 +66,5 @@ export const useTrackerStore = create<TrackerState>((set) => ({
   setConfig: (config) => set({ config }),
   setDeviceId: (deviceId) => set({ deviceId }),
   clearTrack: () => set({ track: [] }),
+  setLastRx: (lastRx) => set({ lastRx }),
 }))

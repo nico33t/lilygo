@@ -58,11 +58,13 @@ function parseNotification(raw: string) {
         const msg = JSON.parse(json) as any
         const type = msg?.type as string | undefined
         console.log('[BLE] msg type:', type ?? 'gps', 'lat:', msg?.lat)
+        useTrackerStore.getState().setLastRx(Date.now())
         if (type === 'config') {
           const cfg = msg as WSConfigMessage
           useTrackerStore.getState().setConfig({
             interval_ms: cfg.interval_ms,
             gnss_mode: cfg.gnss_mode,
+            fw_version: cfg.fw_version,
           } as TrackerConfig)
         } else if (type === 'sim') {
           useTrackerStore.getState().setSim(msg as SimData)
@@ -109,7 +111,10 @@ function startMonitor() {
 export async function bleConnect(deviceId: string) {
   if (connectedDevice) {
     const connected = await connectedDevice.isConnected().catch(() => false)
-    if (connected) return
+    if (connected) {
+      startMonitor()
+      return
+    }
   }
 
   isManualDisconnect = false
