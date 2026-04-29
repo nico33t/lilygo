@@ -105,7 +105,8 @@ static OtaInfo    otaInfo;
 static NimBLEServer*         pServer     = nullptr;
 static NimBLECharacteristic* pTxChar     = nullptr;
 static NimBLECharacteristic* pRxChar     = nullptr;
-static bool                  bleConnected = false;
+static bool                  bleConnected    = false;
+static volatile bool         bleSendImmediate = false;
 
 // ─── Utility ────────────────────────────────────────────────────────────────
 
@@ -363,7 +364,8 @@ static void loadFixFromNVS() {
 
 class GPSServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* pSrv) override {
-    bleConnected = true;
+    bleConnected     = true;
+    bleSendImmediate = true;
     Serial.println("[BLE] Client connesso");
     if (pTxChar) {
       String cfg = buildConfigJson();
@@ -372,7 +374,8 @@ class GPSServerCallbacks : public NimBLEServerCallbacks {
     }
   }
   void onConnect(NimBLEServer* pSrv, ble_gap_conn_desc* desc) override {
-    bleConnected = true;
+    bleConnected     = true;
+    bleSendImmediate = true;
     Serial.printf("[BLE] Client connesso (addr): %s\n", NimBLEAddress(desc->peer_ota_addr).toString().c_str());
     if (pTxChar) {
       String cfg = buildConfigJson();
@@ -759,6 +762,17 @@ void loop() {
   currentPowerState = power_tick(gps.speed_kmh, &pcfg);
   gpsIntervalMs     = pcfg.gps_interval_ms;
   sendIntervalMs    = pcfg.send_interval_ms;
+
+  // When BLE client just connected, send immediately and cap intervals to 5s
+  if (bleSendImmediate) {
+    bleSendImmediate = false;
+    lastGPS  = 0;
+    lastSend = 0;
+  }
+  if (bleConnected) {
+    if (gpsIntervalMs  > 5000) gpsIntervalMs  = 5000;
+    if (sendIntervalMs > 5000) sendIntervalMs = 5000;
+  }
 
   // GPS read
   if (now - lastGPS >= gpsIntervalMs) {
