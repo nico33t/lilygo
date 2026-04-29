@@ -4,3 +4,5 @@
 
 expo-env.d.ts
 # @end expo-cli.env
+# Firebase plist generato da prebuild — la sorgente vera è nella root
+ios/GPSTracker/GoogleService-Info.plist
