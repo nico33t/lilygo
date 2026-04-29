@@ -5,7 +5,10 @@ import { BLE_SERVICE_UUID, BLE_RX_UUID, BLE_TX_UUID, RECONNECT_DELAY_MS } from '
 import { saveLastDevice } from './bleCache'
 
 export { State as BleState }
-export const bleManager = new BleManager()
+
+let _bleManager: BleManager | null = null
+try { _bleManager = new BleManager() } catch { /* BLE not available (Expo Go) */ }
+export const bleManager = _bleManager as BleManager
 
 let connectedDevice: Device | null = null
 let txSubscription: { remove: () => void } | null = null

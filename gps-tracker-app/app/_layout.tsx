@@ -10,6 +10,7 @@ export default function RootLayout() {
   const pathname = usePathname()
 
   useEffect(() => {
+    if (!bleManager) return
     const sub = bleManager.onStateChange((state) => {
       if (state === BleState.PoweredOn && !autoConnectDone.current) {
         autoConnectDone.current = true
