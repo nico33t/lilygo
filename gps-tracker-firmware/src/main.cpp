@@ -400,7 +400,8 @@ class GPSServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* pSrv, ble_gap_conn_desc* desc) override {
     bleConnected     = true;
     bleSendImmediate = true;
-    Serial.printf("[BLE] Client connesso (addr): %s\n", NimBLEAddress(desc->peer_ota_addr).toString().c_str());
+    uint16_t mtu = ble_att_mtu(desc->conn_handle);
+    Serial.printf("[BLE] Client connesso addr=%s mtu=%u\n", NimBLEAddress(desc->peer_ota_addr).toString().c_str(), mtu);
     if (pTxChar) {
       String cfg = buildConfigJson();
       pTxChar->setValue(cfg.c_str());
@@ -632,9 +633,11 @@ static void sendGPSData() {
 
   // BLE notify
   if (bleConnected && pTxChar) {
+    uint16_t connHandle = pServer ? pServer->getPeerInfo(0).getConnHandle() : 0xFFFF;
+    uint16_t mtu = (connHandle != 0xFFFF) ? ble_att_mtu(connHandle) : 0;
     pTxChar->setValue(out.c_str());
     pTxChar->notify();
-    Serial.printf("[BLE] GPS %u byte\n", (unsigned)out.length());
+    Serial.printf("[BLE] GPS %u byte mtu=%u\n", (unsigned)out.length(), mtu);
   }
 
 #if ENABLE_WIFI
