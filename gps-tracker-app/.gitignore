@@ -4,5 +4,19 @@
 
 expo-env.d.ts
 # @end expo-cli.env
-# Firebase plist generato da prebuild — la sorgente vera è nella root
+
+# ── Secrets & Firebase ───────────────────────────────────────────────────────
+# Firebase iOS config (contains API keys). Source stays in project root.
+# Never commit either copy — the root one is the template; use .env for tokens.
+GoogleService-Info.plist
 ios/GPSTracker/GoogleService-Info.plist
+# Firebase Android config
+google-services.json
+android/app/google-services.json
+# Environment variables (contain OAuth client IDs and API keys)
+.env
+.env.local
+.env.production
+# Firebase service-account keys (admin SDK)
+*serviceAccountKey*.json
+*firebase-adminsdk*.json

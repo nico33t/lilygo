@@ -4,6 +4,8 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -27,15 +29,18 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>gpstracker</string>
-				<string>com.nicotomassini.gps-tracker</string>
+				<string>com.googleusercontent.apps.657837797904-s52kl6qosi590721aidmej834v6e52t2</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>exp+gps-tracker</string>
 			</array>
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
-	<key>GMSApiKey</key>
-	<string>AIzaSyAxF8IujcVi6mLxmMLM7g2kbYRgkYVWs-I</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0</string>
 	<key>LSRequiresIPhoneOS</key>
@@ -49,6 +54,12 @@
 	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Allow $(PRODUCT_NAME) to connect to Bluetooth GPS devices</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_expo._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Expo Dev Launcher uses the local network to discover and connect to development servers running on your computer.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>GPS Tracker needs location to track your route.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
