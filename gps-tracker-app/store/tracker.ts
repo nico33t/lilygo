@@ -12,11 +12,11 @@ interface TrackerState {
   status: ConnectionStatus
   config: TrackerConfig
   track: TrackPoint[]
-  deviceIp: string | null
+  deviceId: string | null   // BLE device ID or WiFi IP
   setGPS: (data: GPSData) => void
   setStatus: (s: ConnectionStatus) => void
   setConfig: (c: TrackerConfig) => void
-  setDeviceIp: (ip: string | null) => void
+  setDeviceId: (id: string | null) => void
   clearTrack: () => void
 }
 
@@ -25,7 +25,7 @@ export const useTrackerStore = create<TrackerState>((set) => ({
   status: 'disconnected',
   config: { ...DEFAULT_CONFIG },
   track: [],
-  deviceIp: null,
+  deviceId: null,
 
   setGPS: (data) =>
     set((state) => ({
@@ -36,10 +36,7 @@ export const useTrackerStore = create<TrackerState>((set) => ({
     })),
 
   setStatus: (status) => set({ status }),
-
   setConfig: (config) => set({ config }),
-
-  setDeviceIp: (deviceIp) => set({ deviceIp }),
-
+  setDeviceId: (deviceId) => set({ deviceId }),
   clearTrack: () => set({ track: [] }),
 }))

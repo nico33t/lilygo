@@ -1,26 +1,29 @@
 import { Ionicons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import ConnectionBadge from '../components/ConnectionBadge'
 import GPSMap from '../components/GPSMap'
 import StatusPanel from '../components/StatusPanel'
 import { useTracker } from '../hooks/useTracker'
 
 export default function TrackerScreen() {
-  const { ip } = useLocalSearchParams<{ ip: string }>()
-  useTracker(ip ?? '192.168.4.1')
+  const { ip, id } = useLocalSearchParams<{ ip?: string; id?: string }>()
+  const deviceId = id ?? ip ?? ''
+  const insets = useSafeAreaInsets()
+  useTracker(deviceId)
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Ionicons name="arrow-back" size={22} color="#222222" />
         </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>{ip}</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>{deviceId}</Text>
         <View style={styles.headerRight}>
           <ConnectionBadge />
           <Pressable
-            onPress={() => router.push(`/settings?ip=${ip}`)}
+            onPress={() => router.push(`/settings?id=${encodeURIComponent(deviceId)}`)}
             style={styles.settingsBtn}
             hitSlop={8}
           >
@@ -45,7 +48,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#ebebeb',
     gap: 8,

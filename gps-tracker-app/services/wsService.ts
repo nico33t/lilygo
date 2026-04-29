@@ -25,7 +25,7 @@ export function connect(ip: string) {
   currentIp = ip
 
   const store = useTrackerStore.getState()
-  store.setDeviceIp(ip)
+  store.setDeviceId(ip)
   store.setStatus('connecting')
 
   ws = new WebSocket(buildWsUrl(ip))

@@ -1,5 +1,5 @@
-import { StyleSheet } from 'react-native'
-import MapView, { Marker, Polyline, Region } from 'react-native-maps'
+import { Platform, StyleSheet } from 'react-native'
+import MapView, { Marker, PROVIDER_GOOGLE, Polyline, Region } from 'react-native-maps'
 import { useTrackerStore } from '../../store/tracker'
 
 const DEFAULT_REGION: Region = {
@@ -23,7 +23,11 @@ export default function GPSMap() {
     : DEFAULT_REGION
 
   return (
-    <MapView style={styles.map} region={region}>
+    <MapView
+      style={styles.map}
+      region={region}
+      provider={Platform.OS === 'ios' ? PROVIDER_GOOGLE : PROVIDER_GOOGLE}
+    >
       {gps?.valid && (
         <Marker
           coordinate={{ latitude: gps.lat, longitude: gps.lon }}

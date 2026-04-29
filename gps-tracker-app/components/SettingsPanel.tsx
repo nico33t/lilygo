@@ -1,7 +1,10 @@
 import Slider from '@react-native-community/slider'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { sendCommand } from '../services/wsService'
+import { bleSendCommand } from '../services/bleService'
+import { sendCommand as wsSendCommand } from '../services/wsService'
 import { useTrackerStore } from '../store/tracker'
+
+const IP_RE = /^\d{1,3}(\.\d{1,3}){3}$/
 
 const GNSS_MODES = [
   { value: 0, label: 'GPS' },
@@ -11,8 +14,11 @@ const GNSS_MODES = [
 export default function SettingsPanel() {
   const status = useTrackerStore((s) => s.status)
   const config = useTrackerStore((s) => s.config)
+  const deviceId = useTrackerStore((s) => s.deviceId)
   const setConfig = useTrackerStore((s) => s.setConfig)
   const connected = status === 'connected'
+  const isWifi = deviceId ? IP_RE.test(deviceId) : false
+  const sendCommand = isWifi ? wsSendCommand : bleSendCommand
 
   const handleApply = () => {
     sendCommand({ cmd: 'set_interval', value: config.interval_ms })
