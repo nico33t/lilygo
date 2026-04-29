@@ -8,7 +8,9 @@ export const DEFAULT_CONFIG = {
   gnss_mode: 1,
 } as const
 
-export const buildWsUrl = (ip: string) => `ws://${ip}:${WS_PORT}`
+// If ip already contains a port (e.g. "localhost:8765") use it directly
+export const buildWsUrl = (ip: string) =>
+  ip.includes(':') ? `ws://${ip}` : `ws://${ip}:${WS_PORT}`
 export const buildHttpUrl = (ip: string) => `http://${ip}:${HTTP_PORT}`
 
 // BLE — Nordic UART Service

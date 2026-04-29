@@ -29,18 +29,29 @@ export interface TrackerBackend {
 
 let _instance: TrackerBackend | null = null
 let _url = ''
+let _firebaseMode = false
+
+export function setFirebaseMode(enabled: boolean): void {
+  if (_firebaseMode === enabled) return
+  _firebaseMode = enabled
+  _instance = null
+}
 
 export async function getBackend(): Promise<TrackerBackend> {
   if (_instance) return _instance
-  const { HttpBackend } = await import('./httpBackend')
-  _instance = new HttpBackend(_url)
+  if (_firebaseMode) {
+    const { FirebaseBackend } = await import('./firebaseBackend')
+    _instance = new FirebaseBackend()
+  } else {
+    const { HttpBackend } = await import('./httpBackend')
+    _instance = new HttpBackend(_url)
+  }
   return _instance
 }
 
 export async function setBackendUrl(url: string): Promise<void> {
   _url = url
   _instance = null
-  // Persist without crashing if AsyncStorage unavailable
   try {
     const AS = require('@react-native-async-storage/async-storage').default
     await AS?.setItem('BACKEND_URL', url)

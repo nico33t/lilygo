@@ -1,30 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  Animated,
-  Easing,
+  ActivityIndicator,
   FlatList,
   Platform,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { Device } from 'react-native-ble-plx'
+import auth from '@react-native-firebase/auth'
 import { bleManager, BleState } from '../services/bleService'
 import { getLastDevice } from '../services/bleCache'
-import { BLE_SERVICE_UUID, BLE_DEVICE_NAME, APP_VERSION } from '../constants/tracker'
+import { BLE_DEVICE_NAME, APP_VERSION } from '../constants/tracker'
 import { DiscoveredDevice, scanSubnet } from '../services/discovery'
+import { listUserDevices, getTrialStatus, DeviceInfo } from '../services/deviceService'
 import DeviceCard from '../components/DeviceCard'
 import { C, R, S } from '../constants/design'
 
 type ScanMode  = 'ble' | 'wifi'
 type ScanState = 'idle' | 'scanning' | 'done'
 
-// Signal strength → 0–4 bars
+// ─── Signal bars ──────────────────────────────────────────────────────────────
 function rssiLevel(rssi: number | null): number {
   if (rssi == null) return 0
   if (rssi > -60) return 4
@@ -40,111 +40,53 @@ function SignalBars({ rssi }: { rssi: number | null }) {
       {[1, 2, 3, 4].map((i) => (
         <View
           key={i}
-          style={[
-            sig.bar,
-            { height: 4 + i * 3 },
-            i <= level ? sig.barOn : sig.barOff,
-          ]}
+          style={[sig.bar, { height: 4 + i * 3 }, i <= level ? sig.on : sig.off]}
         />
       ))}
     </View>
   )
 }
-
 const sig = StyleSheet.create({
   wrap: { flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
   bar:  { width: 4, borderRadius: 2 },
-  barOn: { backgroundColor: C.blue },
-  barOff: { backgroundColor: C.sep },
+  on:   { backgroundColor: C.accent },
+  off:  { backgroundColor: C.sep },
 })
 
-// Radar ring animation
-function RadarRings({ scanning }: { scanning: boolean }) {
-  const rings = [useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current]
+// ─── Electron BLE bridge ──────────────────────────────────────────────────────
+const IS_ELECTRON = typeof window !== 'undefined' && !!(window as any).electronInfo?.isElectron
 
-  useEffect(() => {
-    if (!scanning) {
-      rings.forEach((r) => { r.stopAnimation(); r.setValue(0) })
-      return
-    }
-    const anims = rings.map((r, i) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 400),
-          Animated.timing(r, { toValue: 1, duration: 1600, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-          Animated.timing(r, { toValue: 0, duration: 0, useNativeDriver: true }),
-        ])
-      )
-    )
-    anims.forEach((a) => a.start())
-    return () => anims.forEach((a) => a.stop())
-  }, [scanning])
-
-  return (
-    <View style={radar.wrap}>
-      {rings.map((r, i) => (
-        <Animated.View
-          key={i}
-          style={[
-            radar.ring,
-            {
-              opacity: r.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 0.35, 0] }),
-              transform: [{ scale: r.interpolate({ inputRange: [0, 1], outputRange: [0.6, 2.2] }) }],
-            },
-          ]}
-        />
-      ))}
-      <View style={radar.center}>
-        <Ionicons
-          name={scanning ? 'radio-outline' : 'radio'}
-          size={28}
-          color={C.accent}
-        />
-      </View>
-    </View>
-  )
-}
-
-const radar = StyleSheet.create({
-  wrap: { width: 88, height: 88, alignItems: 'center', justifyContent: 'center' },
-  ring: {
-    position: 'absolute',
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    borderWidth: 1.5,
-    borderColor: C.accent,
-  },
-  center: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: C.accentMid,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-})
-
+// ─── Main screen ─────────────────────────────────────────────────────────────
 export default function DiscoveryScreen() {
-  const [mode, setMode] = useState<ScanMode>('ble')
+  const [mode, setMode]           = useState<ScanMode>('ble')
   const [scanState, setScanState] = useState<ScanState>('idle')
   const [bleDevices, setBleDevices] = useState<Device[]>([])
   const [wifiDevices, setWifiDevices] = useState<DiscoveredDevice[]>([])
-  const [showManual, setShowManual] = useState(false)
-  const [manualVal, setManualVal] = useState('')
-  const [bleOff, setBleOff] = useState(false)
+  const [bleOff, setBleOff]         = useState(false)
   const [lastDevice, setLastDevice] = useState<string | null>(null)
 
-  const wifiAbortRef = useRef<AbortController | null>(null)
+  const wifiAbortRef    = useRef<AbortController | null>(null)
   const bleScanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const [cloudDevices, setCloudDevices] = useState<DeviceInfo[]>([])
+
+  useEffect(() => { getLastDevice().then(setLastDevice).catch(() => {}) }, [])
+
   useEffect(() => {
-    getLastDevice().then(setLastDevice).catch(() => {})
+    const unsub = auth().onAuthStateChanged(async (user) => {
+      if (user) {
+        try { setCloudDevices(await listUserDevices()) } catch {}
+      } else {
+        setCloudDevices([])
+      }
+    })
+    return unsub
   }, [])
 
   useEffect(() => {
-    const sub = bleManager.onStateChange((state) => {
-      setBleOff(state === BleState.PoweredOff || state === BleState.Unauthorized)
+    if (!bleManager) return
+    const sub = bleManager.onStateChange((s) => {
+      setBleOff(s === BleState.PoweredOff || s === BleState.Unauthorized)
     }, true)
     return () => sub.remove()
   }, [])
@@ -153,46 +95,32 @@ export default function DiscoveryScreen() {
     setBleDevices([])
     setScanState('scanning')
     if (bleScanTimerRef.current) clearTimeout(bleScanTimerRef.current)
-
-    bleManager.startDeviceScan(
-      [BLE_SERVICE_UUID],
-      { allowDuplicates: false },
-      (error, device) => {
-        if (error) { setScanState('done'); return }
-        if (device && (device.name === BLE_DEVICE_NAME || device.localName === BLE_DEVICE_NAME)) {
-          setBleDevices((prev) =>
-            prev.find((d) => d.id === device.id) ? prev : [...prev, device]
-          )
-        }
+    bleManager.startDeviceScan(null, { allowDuplicates: false }, (err, device) => {
+      if (err) { setScanState('done'); return }
+      if (device && (device.name === BLE_DEVICE_NAME || device.localName === BLE_DEVICE_NAME)) {
+        setBleDevices((prev) => prev.find((d) => d.id === device.id) ? prev : [...prev, device])
       }
-    )
-
+    })
     bleScanTimerRef.current = setTimeout(() => {
       bleManager.stopDeviceScan()
       setScanState('done')
-    }, 10000)
+    }, 15000)
   }, [])
 
   const startWifiScan = useCallback(async () => {
     wifiAbortRef.current?.abort()
     const ctrl = new AbortController()
     wifiAbortRef.current = ctrl
-
     setWifiDevices([])
     setScanState('scanning')
-
     await scanSubnet(
-      (device) => setWifiDevices((prev) =>
-        prev.find((d) => d.ip === device.ip) ? prev : [...prev, device]
-      ),
+      (d) => setWifiDevices((prev) => prev.find((x) => x.ip === d.ip) ? prev : [...prev, d]),
       ctrl.signal
     )
-
     if (!ctrl.signal.aborted) setScanState('done')
   }, [])
 
   const startScan = useCallback(() => {
-    setScanState('idle')
     if (mode === 'ble') startBleScan()
     else startWifiScan()
   }, [mode, startBleScan, startWifiScan])
@@ -200,7 +128,7 @@ export default function DiscoveryScreen() {
   useEffect(() => {
     startScan()
     return () => {
-      bleManager.stopDeviceScan()
+      bleManager?.stopDeviceScan()
       if (bleScanTimerRef.current) clearTimeout(bleScanTimerRef.current)
       wifiAbortRef.current?.abort()
     }
@@ -212,412 +140,419 @@ export default function DiscoveryScreen() {
     router.push(`/tracker?id=${encodeURIComponent(device.id)}`)
   }
 
-  const handleSelectWifi = (ip: string) => {
-    wifiAbortRef.current?.abort()
-    router.push(`/tracker?ip=${ip}`)
-  }
+  const devices = mode === 'ble' ? bleDevices : wifiDevices
 
-  const handleManualConnect = () => {
-    const val = manualVal.trim()
-    if (!val) return
-    const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(val)
-    router.push(isIp ? `/tracker?ip=${val}` : `/tracker?id=${encodeURIComponent(val)}`)
-  }
-
-  const count = mode === 'ble' ? bleDevices.length : wifiDevices.length
-
-  return (
-    <SafeAreaView style={styles.root}>
-
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.appTitle}>GPS Tracker</Text>
-          <Text style={styles.appVersion}>v{APP_VERSION}</Text>
-        </View>
-        <Pressable
-          onPress={() => router.push('/settings')}
-          style={styles.headerBtn}
-          hitSlop={8}
-        >
-          <Ionicons name="settings-outline" size={22} color={C.text2} />
-        </Pressable>
-      </View>
-
-      {/* ── Mode toggle ────────────────────────────────────────── */}
-      <View style={styles.segWrap}>
-        <View style={styles.seg}>
-          {(['ble', 'wifi'] as ScanMode[]).map((m) => (
-            <Pressable
-              key={m}
-              style={[styles.segBtn, mode === m && styles.segBtnActive]}
-              onPress={() => { if (mode !== m) setMode(m) }}
-            >
-              <Ionicons
-                name={m === 'ble' ? 'bluetooth' : 'wifi'}
-                size={14}
-                color={mode === m ? C.card : C.text2}
-              />
-              <Text style={[styles.segText, mode === m && styles.segTextActive]}>
-                {m === 'ble' ? 'Bluetooth' : 'WiFi'}
+  // ── Cloud devices section ─────────────────────────────────────────────────
+  const CloudSection = cloudDevices.length > 0 ? (
+    <>
+      <Text style={st.sectionLabel}>I MIEI TRACKER · {cloudDevices.length}</Text>
+      {cloudDevices.map((device, index) => {
+        const sub     = getTrialStatus(device)
+        const isFirst = index === 0
+        const isLast  = index === cloudDevices.length - 1
+        return (
+          <Pressable
+            key={device.id}
+            style={({ pressed }) => [
+              st.deviceRow,
+              isFirst && st.rowFirst,
+              isLast  && st.rowLast,
+              pressed && st.pressed,
+            ]}
+            onPress={() => router.push(`/tracker?id=${encodeURIComponent(device.id)}`)}
+          >
+            <View style={[st.iconCircle, { backgroundColor: `${C.accent}12` }]}>
+              <Ionicons name="navigate-circle-outline" size={20} color={C.accent} />
+            </View>
+            <View style={st.rowInfo}>
+              <Text style={st.rowTitle}>{device.name}</Text>
+              <Text style={st.rowSub} numberOfLines={1}>
+                {device.lastSeen
+                  ? `Visto ${new Date(device.lastSeen).toLocaleDateString('it-IT')}`
+                  : 'Mai connesso via cloud'}
               </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
+            </View>
+            {sub.isTrialActive && (
+              <View style={[st.connectPill, { backgroundColor: C.green }]}>
+                <Text style={st.connectPillText}>Trial {sub.daysLeft}g</Text>
+              </View>
+            )}
+            {sub.needsSubscription && (
+              <View style={[st.connectPill, { backgroundColor: C.orange }]}>
+                <Text style={st.connectPillText}>Scaduto</Text>
+              </View>
+            )}
+            <Ionicons name="chevron-forward" size={16} color={C.text3} style={{ marginLeft: 4 }} />
+          </Pressable>
+        )
+      })}
+    </>
+  ) : null
 
-      {/* ── Last device quick-connect ──────────────────────────── */}
+  // ── List header (pinned above items) ──────────────────────────────────────
+  const ListHeader = (
+    <>
+      {CloudSection}
+      {/* Electron bridge shortcut */}
+      {IS_ELECTRON && (
+        <Pressable
+          style={({ pressed }) => [st.rowCard, { marginBottom: 8 }, pressed && st.pressed]}
+          onPress={() => router.push(`/tracker?ip=${encodeURIComponent('localhost:8765')}`)}
+        >
+          <View style={[st.iconCircle, { backgroundColor: '#5856D615' }]}>
+            <Ionicons name="bluetooth" size={18} color="#5856D6" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={st.rowTitle}>BLE Bridge locale</Text>
+            <Text style={st.rowSub}>Connetti via bridge Python</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={C.text3} />
+        </Pressable>
+      )}
+
+      {/* Last device quick-connect */}
       {mode === 'ble' && !bleOff && lastDevice && (
         <Pressable
-          style={({ pressed }) => [styles.lastDeviceCard, pressed && { opacity: 0.75 }]}
+          style={({ pressed }) => [st.rowCard, { marginBottom: 8 }, pressed && st.pressed]}
           onPress={() => {
             bleManager.stopDeviceScan()
             router.push(`/tracker?id=${encodeURIComponent(lastDevice)}`)
           }}
         >
-          <View style={styles.lastDeviceIcon}>
-            <Ionicons name="bluetooth" size={16} color={C.blue} />
+          <View style={[st.iconCircle, { backgroundColor: `${C.blue}15` }]}>
+            <Ionicons name="time-outline" size={18} color={C.blue} />
           </View>
-          <View style={styles.lastDeviceInfo}>
-            <Text style={styles.lastDeviceLabel}>Ultimo dispositivo</Text>
-            <Text style={styles.lastDeviceId} numberOfLines={1}>{lastDevice.slice(0, 17)}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={st.rowTitle}>Riconnetti</Text>
+            <Text style={st.rowSub} numberOfLines={1}>{lastDevice.slice(0, 22)}</Text>
           </View>
-          <View style={styles.lastDeviceConnect}>
-            <Ionicons name="flash" size={13} color={C.card} />
-            <Text style={styles.lastDeviceConnectText}>Connetti</Text>
+          <View style={st.connectPill}>
+            <Text style={st.connectPillText}>Connetti</Text>
           </View>
         </Pressable>
       )}
 
-      {/* ── BLE off warning ────────────────────────────────────── */}
+      {/* BLE off warning */}
       {mode === 'ble' && bleOff && (
-        <View style={styles.warningCard}>
-          <Ionicons name="warning-outline" size={16} color="#7A4E00" />
-          <Text style={styles.warningText}>
-            Attiva il Bluetooth per cercare il tracker
-          </Text>
+        <View style={st.warning}>
+          <Ionicons name="warning-outline" size={15} color="#92400E" />
+          <Text style={st.warningText}>Attiva il Bluetooth per cercare il tracker</Text>
         </View>
       )}
 
-      {/* ── Radar + status ─────────────────────────────────────── */}
-      <View style={styles.scanZone}>
-        <RadarRings scanning={scanState === 'scanning'} />
-        <Text style={styles.scanTitle}>
-          {scanState === 'scanning'
-            ? `Ricerca ${mode === 'ble' ? 'Bluetooth' : 'WiFi'}…`
-            : scanState === 'done' && count === 0
-            ? 'Nessun dispositivo trovato'
-            : scanState === 'done'
-            ? `${count} dispositivo${count > 1 ? 'i' : ''} trovato${count > 1 ? 'i' : ''}`
-            : 'Pronto'}
+      {/* Section label */}
+      {devices.length > 0 && (
+        <Text style={st.sectionLabel}>
+          {mode === 'ble' ? 'BLUETOOTH' : 'RETE LOCALE'} · {devices.length}
         </Text>
-      </View>
-
-      {/* ── Device list ────────────────────────────────────────── */}
-      {mode === 'ble' ? (
-        <FlatList
-          data={bleDevices}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <Pressable
-              style={({ pressed }) => [styles.bleCard, pressed && styles.bleCardPressed]}
-              onPress={() => handleSelectBle(item)}
-            >
-              <View style={styles.bleIconWrap}>
-                <Ionicons name="bluetooth" size={20} color={C.blue} />
-              </View>
-              <View style={styles.bleInfo}>
-                <Text style={styles.bleName}>
-                  {item.name ?? item.localName ?? BLE_DEVICE_NAME}
-                </Text>
-                <Text style={styles.bleId} numberOfLines={1}>{item.id}</Text>
-              </View>
-              <SignalBars rssi={item.rssi} />
-              <Ionicons name="chevron-forward" size={18} color={C.text3} />
-            </Pressable>
-          )}
-          ListEmptyComponent={
-            scanState === 'done' ? (
-              <View style={styles.emptyBox}>
-                <Ionicons name="bluetooth-outline" size={40} color={C.text3} />
-                <Text style={styles.emptyTitle}>Nessun tracker trovato</Text>
-                <Text style={styles.emptyDesc}>
-                  Assicurati che il dispositivo sia acceso e nelle vicinanze
-                </Text>
-              </View>
-            ) : null
-          }
-        />
-      ) : (
-        <FlatList
-          data={wifiDevices}
-          keyExtractor={(item) => item.ip}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <DeviceCard device={item} onPress={() => handleSelectWifi(item.ip)} />
-          )}
-          ListEmptyComponent={
-            scanState === 'done' ? (
-              <View style={styles.emptyBox}>
-                <Ionicons name="wifi-outline" size={40} color={C.text3} />
-                <Text style={styles.emptyTitle}>Nessun tracker trovato</Text>
-                <Text style={styles.emptyDesc}>
-                  Connettiti alla rete WiFi del tracker e riprova
-                </Text>
-              </View>
-            ) : null
-          }
-        />
       )}
+    </>
+  )
 
-      {/* ── Footer ─────────────────────────────────────────────── */}
-      <View style={styles.footer}>
-        {scanState !== 'scanning' && (
-          <Pressable style={styles.primaryBtn} onPress={startScan}>
-            <Ionicons name="search" size={16} color={C.card} />
-            <Text style={styles.primaryBtnText}>Scansiona di nuovo</Text>
-          </Pressable>
-        )}
+  return (
+    <SafeAreaView style={st.root} edges={['top']}>
 
+      {/* ── Large title row ────────────────────────────────────────── */}
+      <View style={st.header}>
+        <Text style={st.title}>Dispositivi</Text>
         <Pressable
-          style={styles.ghostBtn}
-          onPress={() => setShowManual((v) => !v)}
+          style={({ pressed }) => [st.iconBtn, pressed && { opacity: 0.6 }]}
+          onPress={() => auth().currentUser ? router.push('/settings') : router.push('/login')}
+          hitSlop={10}
         >
-          <Text style={styles.ghostBtnText}>
-            {showManual ? 'Annulla' : 'Connessione manuale'}
-          </Text>
+          <Ionicons
+            name={auth().currentUser ? 'person-circle' : 'person-circle-outline'}
+            size={22}
+            color={auth().currentUser ? C.accent : C.text2}
+          />
         </Pressable>
-
-        {showManual && (
-          <View style={styles.manualRow}>
-            <TextInput
-              style={styles.input}
-              value={manualVal}
-              onChangeText={setManualVal}
-              placeholder={mode === 'ble' ? 'Device ID Bluetooth' : '192.168.4.1'}
-              placeholderTextColor={C.text3}
-              keyboardType="numbers-and-punctuation"
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="go"
-              onSubmitEditing={handleManualConnect}
-            />
-            <Pressable style={styles.connectBtn} onPress={handleManualConnect}>
-              <Ionicons name="arrow-forward" size={18} color={C.card} />
-            </Pressable>
-          </View>
-        )}
+        <Pressable
+          style={({ pressed }) => [st.iconBtn, pressed && { opacity: 0.6 }]}
+          onPress={() => router.push('/settings')}
+          hitSlop={10}
+        >
+          <Ionicons name="settings-outline" size={20} color={C.text2} />
+        </Pressable>
       </View>
+
+      {/* ── Mode toggle + scan status ──────────────────────────────── */}
+      <View style={st.controlRow}>
+        <View style={st.toggle}>
+          {(['ble', 'wifi'] as ScanMode[]).map((m) => (
+            <Pressable
+              key={m}
+              style={[st.toggleBtn, mode === m && st.toggleBtnOn]}
+              onPress={() => { if (mode !== m) setMode(m) }}
+            >
+              <Ionicons
+                name={m === 'ble' ? 'bluetooth' : 'wifi'}
+                size={13}
+                color={mode === m ? '#fff' : C.text2}
+              />
+              <Text style={[st.toggleText, mode === m && st.toggleTextOn]}>
+                {m === 'ble' ? 'Bluetooth' : 'WiFi'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <View style={st.scanInfo}>
+          {scanState === 'scanning' ? (
+            <>
+              <ActivityIndicator size="small" color={C.accent} style={{ marginRight: 6 }} />
+              <Text style={st.scanLabel}>Ricerca…</Text>
+            </>
+          ) : (
+            <Pressable
+              style={({ pressed }) => [st.refreshBtn, pressed && { opacity: 0.6 }]}
+              onPress={startScan}
+              hitSlop={10}
+            >
+              <Ionicons name="refresh" size={17} color={C.text2} />
+              <Text style={st.scanLabel}>
+                {scanState === 'done' && devices.length === 0
+                  ? 'Nessuno trovato'
+                  : scanState === 'done'
+                  ? `${devices.length} trovato`
+                  : 'Pronto'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      {/* ── Device list ────────────────────────────────────────────── */}
+      <FlatList
+        data={devices}
+        keyExtractor={(item: any) => item.id ?? item.ip}
+        contentContainerStyle={st.listContent}
+        ListHeaderComponent={ListHeader}
+        renderItem={({ item, index }) => {
+          if (mode === 'ble') {
+            const d = item as Device
+            const isLast = index === bleDevices.length - 1
+            return (
+              <Pressable
+                style={({ pressed }) => [
+                  st.deviceRow,
+                  index === 0 && st.rowFirst,
+                  isLast && st.rowLast,
+                  pressed && st.pressed,
+                ]}
+                onPress={() => handleSelectBle(d)}
+              >
+                <View style={[st.iconCircle, { backgroundColor: `${C.blue}12` }]}>
+                  <Ionicons name="bluetooth" size={18} color={C.blue} />
+                </View>
+                <View style={st.rowInfo}>
+                  <Text style={st.rowTitle}>{d.name ?? d.localName ?? BLE_DEVICE_NAME}</Text>
+                  <Text style={st.rowSub} numberOfLines={1}>{d.id}</Text>
+                </View>
+                <SignalBars rssi={d.rssi} />
+                <Ionicons name="chevron-forward" size={16} color={C.text3} style={{ marginLeft: 6 }} />
+              </Pressable>
+            )
+          }
+          const w = item as DiscoveredDevice
+          return <DeviceCard device={w} onPress={() => router.push(`/tracker?ip=${w.ip}`)} />
+        }}
+        ListEmptyComponent={
+          scanState !== 'scanning' ? (
+            <View style={st.empty}>
+              <View style={st.emptyIcon}>
+                <Ionicons
+                  name={mode === 'ble' ? 'bluetooth-outline' : 'wifi-outline'}
+                  size={32}
+                  color={C.text3}
+                />
+              </View>
+              <Text style={st.emptyTitle}>Nessun dispositivo trovato</Text>
+              <Text style={st.emptyDesc}>
+                {mode === 'ble'
+                  ? 'Assicurati che il dispositivo sia acceso e vicino'
+                  : 'Connettiti alla rete WiFi del tracker'}
+              </Text>
+            </View>
+          ) : null
+        }
+      />
+
+
     </SafeAreaView>
   )
 }
 
-const styles = StyleSheet.create({
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
 
+  // Header
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: S.lg,
-    paddingTop: S.sm,
-    paddingBottom: S.md,
+    paddingTop: S.md,
+    paddingBottom: S.sm,
   },
-  appTitle: {
-    fontSize: 28,
-    fontWeight: '800',
+  title: {
+    fontSize: 34,
+    fontWeight: '700',
     color: C.text1,
     letterSpacing: -0.5,
   },
-  appVersion: {
-    fontSize: 12,
-    color: C.text3,
-    marginTop: 1,
-  },
-  headerBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: C.card,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
     shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
   },
 
-  segWrap: { paddingHorizontal: S.lg, marginBottom: S.md },
-  seg: {
+  // Toggle + scan row
+  controlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: S.lg,
+    paddingBottom: S.md,
+    gap: S.md,
+  },
+  toggle: {
     flexDirection: 'row',
     backgroundColor: C.card,
-    borderRadius: R.lg,
+    borderRadius: R.xl ?? 24,
     padding: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+  },
+  toggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    gap: 5,
+  },
+  toggleBtnOn: { backgroundColor: C.accent },
+  toggleText: { fontSize: 13, fontWeight: '600', color: C.text2 },
+  toggleTextOn: { color: '#fff' },
+
+  scanInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  refreshBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  scanLabel: { fontSize: 13, color: C.text2 },
+
+  // List
+  listContent: { paddingHorizontal: S.lg, paddingBottom: S.xl },
+
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: C.text3,
+    letterSpacing: 0.5,
+    marginTop: S.md,
+    marginBottom: S.xs ?? 4,
+    paddingHorizontal: 4,
+  },
+
+  // Device rows — grouped iOS-style
+  deviceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.card,
+    paddingHorizontal: S.md,
+    paddingVertical: 13,
+    gap: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: C.sep,
+  },
+  rowFirst: { borderTopLeftRadius: R.lg, borderTopRightRadius: R.lg },
+  rowLast:  {
+    borderBottomLeftRadius: R.lg,
+    borderBottomRightRadius: R.lg,
+    borderBottomWidth: 0,
+  },
+
+  // Shared row card (last device, electron banner)
+  rowCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.card,
+    borderRadius: R.lg,
+    paddingHorizontal: S.md,
+    paddingVertical: 13,
+    gap: 12,
     shadowColor: '#000',
     shadowOpacity: 0.04,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
   },
-  segBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: R.md,
-    gap: 6,
-  },
-  segBtnActive: { backgroundColor: C.accent },
-  segText: { fontSize: 13, fontWeight: '600', color: C.text2 },
-  segTextActive: { color: C.card },
+  pressed: { opacity: 0.7 },
 
-  lastDeviceCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: C.card,
-    marginHorizontal: S.lg,
-    marginBottom: S.sm,
-    borderRadius: R.lg,
-    padding: 12,
-    gap: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: C.sep,
-  },
-  lastDeviceIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: R.md,
-    backgroundColor: '#007AFF12',
+  iconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  lastDeviceInfo: { flex: 1, gap: 1 },
-  lastDeviceLabel: { fontSize: 11, fontWeight: '600', color: C.text3, textTransform: 'uppercase', letterSpacing: 0.4 },
-  lastDeviceId: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.text1,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  lastDeviceConnect: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: C.blue,
-    borderRadius: R.md,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 4,
-  },
-  lastDeviceConnectText: { fontSize: 12, fontWeight: '700', color: C.card },
-
-  warningCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF3CD',
-    marginHorizontal: S.md,
-    marginBottom: S.sm,
-    borderRadius: R.md,
-    padding: 12,
-    gap: 8,
-  },
-  warningText: { flex: 1, fontSize: 13, color: '#7A4E00' },
-
-  scanZone: {
-    alignItems: 'center',
-    paddingVertical: S.lg,
-    gap: S.md,
-  },
-  scanTitle: {
-    fontSize: 14,
-    fontWeight: '500',
+  rowInfo: { flex: 1 },
+  rowTitle: { fontSize: 15, fontWeight: '600', color: C.text1 },
+  rowSub: {
+    fontSize: 12,
     color: C.text2,
-  },
-
-  list: { flexGrow: 1, paddingBottom: S.sm },
-
-  bleCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: C.card,
-    marginHorizontal: S.md,
-    marginVertical: 5,
-    borderRadius: R.lg,
-    padding: S.md,
-    gap: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  bleCardPressed: { opacity: 0.75, transform: [{ scale: 0.985 }] },
-  bleIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: R.md,
-    backgroundColor: '#007AFF12',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bleInfo: { flex: 1, gap: 2 },
-  bleName: { fontSize: 15, fontWeight: '700', color: C.text1 },
-  bleId: {
-    fontSize: 11,
-    color: C.text3,
+    marginTop: 1,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
 
-  emptyBox: {
+  connectPill: {
+    backgroundColor: C.accent,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  connectPillText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+
+  // Warning
+  warning: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: S.xl,
+    backgroundColor: '#FEF3C7',
+    borderRadius: R.md,
+    padding: 11,
+    gap: 8,
+    marginBottom: S.sm,
+  },
+  warningText: { flex: 1, fontSize: 13, color: '#92400E' },
+
+  // Empty
+  empty: {
+    alignItems: 'center',
+    paddingTop: 60,
     paddingHorizontal: S.xl,
     gap: S.sm,
   },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: C.text2 },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: C.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: S.sm,
+  },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: C.text1 },
   emptyDesc: { fontSize: 14, color: C.text3, textAlign: 'center', lineHeight: 20 },
 
-  footer: { paddingHorizontal: S.md, paddingBottom: S.sm, gap: S.sm },
-
-  primaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: C.accent,
-    borderRadius: R.lg,
-    paddingVertical: 15,
-    gap: 8,
-  },
-  primaryBtnText: { color: C.card, fontWeight: '700', fontSize: 15 },
-
-  ghostBtn: { alignItems: 'center', paddingVertical: 10 },
-  ghostBtnText: { color: C.text2, fontWeight: '600', fontSize: 14 },
-
-  manualRow: { flexDirection: 'row', gap: 8 },
-  input: {
-    flex: 1,
-    backgroundColor: C.card,
-    borderRadius: R.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: C.sep,
-    paddingHorizontal: S.md,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: C.text1,
-  },
-  connectBtn: {
-    backgroundColor: C.text1,
-    borderRadius: R.md,
-    width: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 })

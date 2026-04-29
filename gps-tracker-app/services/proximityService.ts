@@ -14,8 +14,20 @@ Notifications.setNotificationHandler({
 let _disconnectTimer: ReturnType<typeof setTimeout> | null = null
 
 export async function requestProximityPermissions(): Promise<boolean> {
-  const { status } = await Notifications.requestPermissionsAsync()
-  return status === 'granted'
+  const result = await Notifications.requestPermissionsAsync() as any
+  return result.granted === true || result.status === 'granted'
+}
+
+export function notifyOtaAvailable(version: string) {
+  Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Aggiornamento firmware disponibile',
+      body: `Versione ${version} è pronta. Apri le impostazioni per aggiornare.`,
+      sound: true,
+      data: { navigate: 'settings' },
+    },
+    trigger: null,
+  }).catch(() => {})
 }
 
 export function onBleDisconnectedUnexpectedly(enabled: boolean) {

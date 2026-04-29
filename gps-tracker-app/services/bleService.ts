@@ -3,6 +3,9 @@ import { useTrackerStore } from '../store/tracker'
 import { GPSData, OtaStatus, PowerData, SimData, TrackerConfig, WSCommand, WSConfigMessage } from '../types'
 import { BLE_SERVICE_UUID, BLE_RX_UUID, BLE_TX_UUID, RECONNECT_DELAY_MS } from '../constants/tracker'
 import { saveLastDevice } from './bleCache'
+import { notifyOtaAvailable } from './proximityService'
+
+let _lastOtaNotifiedVersion: string | null = null
 
 export { State as BleState }
 
@@ -79,7 +82,12 @@ function parseNotification(raw: string) {
         } else if (type === 'power') {
           useTrackerStore.getState().setPower(msg as unknown as PowerData)
         } else if (type === 'ota') {
-          useTrackerStore.getState().setOta(msg as unknown as OtaStatus)
+          const ota = msg as unknown as OtaStatus
+          useTrackerStore.getState().setOta(ota)
+          if (ota.available && ota.version && ota.version !== _lastOtaNotifiedVersion) {
+            _lastOtaNotifiedVersion = ota.version
+            notifyOtaAvailable(ota.version)
+          }
         } else if (type === 'ota_progress') {
           const current = useTrackerStore.getState().ota
           if (current) useTrackerStore.getState().setOta({ ...current, progress: (msg as any).pct })

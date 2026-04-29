@@ -1,13 +1,23 @@
 import { useEffect, useRef } from 'react'
 import { Alert, Linking, Platform } from 'react-native'
 import { Stack, router, usePathname } from 'expo-router'
+import * as Notifications from 'expo-notifications'
 import { bleManager, BleState } from '../services/bleService'
 import { getLastDevice } from '../services/bleCache'
 import { requestProximityPermissions } from '../services/proximityService'
+import { setFirebaseMode } from '../services/backendService'
+import { useAuth } from '../hooks/useAuth'
 
 export default function RootLayout() {
   const autoConnectDone = useRef(false)
   const pathname = usePathname()
+  const user = useAuth()
+
+  // Sincronizza Firebase mode con stato auth
+  useEffect(() => {
+    if (user === undefined) return
+    setFirebaseMode(user !== null)
+  }, [user])
 
   useEffect(() => {
     if (!bleManager) return
@@ -49,6 +59,14 @@ export default function RootLayout() {
     requestProximityPermissions().catch(() => {})
   }, [])
 
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as { navigate?: string }
+      if (data?.navigate === 'settings') router.push('/settings')
+    })
+    return () => sub.remove()
+  }, [])
+
   return (
     <Stack
       screenOptions={{
@@ -59,6 +77,7 @@ export default function RootLayout() {
       }}
     >
       <Stack.Screen name="index" />
+      <Stack.Screen name="login" />
       <Stack.Screen name="tracker" />
       <Stack.Screen name="history" options={{ headerShown: false }} />
       <Stack.Screen name="session" options={{ headerShown: false }} />

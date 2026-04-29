@@ -1,13 +1,17 @@
 import Slider from '@react-native-community/slider'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Animated, Pressable, ScrollView, StyleSheet,
   Switch, Text, TextInput, View,
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
+import { router } from 'expo-router'
+import auth from '@react-native-firebase/auth'
 import { bleSendCommand } from '../services/bleService'
 import { sendCommand as wsSendCommand } from '../services/wsService'
 import { useTrackerStore } from '../store/tracker'
+import { signOut } from '../services/authService'
+import { listUserDevices, getTrialStatus, claimDevice, DeviceInfo } from '../services/deviceService'
 import { C, R, S } from '../constants/design'
 
 const IP_RE = /^\d{1,3}(\.\d{1,3}){3}$/
@@ -67,6 +71,27 @@ export default function SettingsPanel() {
   const [restarting, setRestarting]     = useState(false)
   const [apn, setApn]                   = useState('em')
   const [apnSent, setApnSent]           = useState(false)
+
+  const [userEmail, setUserEmail]   = useState<string | null>(null)
+  const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null)
+  const [claimName, setClaimName]   = useState('Il mio tracker')
+  const [claiming, setClaiming]     = useState(false)
+  const [claimDone, setClaimDone]   = useState(false)
+
+  useEffect(() => {
+    const unsub = auth().onAuthStateChanged(async (user) => {
+      setUserEmail(user?.email ?? null)
+      if (user && deviceId) {
+        try {
+          const devices = await listUserDevices()
+          setDeviceInfo(devices.find((d) => d.id === deviceId) ?? null)
+        } catch {}
+      } else {
+        setDeviceInfo(null)
+      }
+    })
+    return unsub
+  }, [deviceId])
 
   const showToast = () => {
     setToastVisible(true)
@@ -291,6 +316,101 @@ export default function SettingsPanel() {
         </>
       )}
 
+      {/* ─── Account ──────────────────────────────────────────────────────── */}
+      <SectionLabel title="ACCOUNT" />
+      {userEmail ? (
+        <Card>
+          <InfoRow label="Email" value={userEmail} />
+
+          {deviceInfo ? (() => {
+            const sub = getTrialStatus(deviceInfo)
+            return (
+              <>
+                <Sep />
+                <InfoRow
+                  label="Piano tracker"
+                  value={
+                    sub.isProActive    ? 'Pro attivo' :
+                    sub.isTrialActive  ? `Trial · ${sub.daysLeft} giorni rimasti` :
+                    'Abbonamento scaduto'
+                  }
+                  accent={sub.isProActive || sub.isTrialActive}
+                />
+                {sub.needsSubscription && (
+                  <>
+                    <Sep />
+                    <View style={styles.row}>
+                      <Text style={[styles.rowLabel, { color: C.orange }]}>
+                        Attiva il piano Pro per continuare il tracking cloud
+                      </Text>
+                    </View>
+                  </>
+                )}
+              </>
+            )
+          })() : (
+            connected && !claimDone ? (
+              <>
+                <Sep />
+                <View style={styles.claimBlock}>
+                  <Text style={styles.rowLabel}>Associa questo tracker</Text>
+                  <Text style={styles.rowHint}>
+                    14 giorni di trial gratuito, poi €5.99/mese
+                  </Text>
+                  <View style={styles.apnRow}>
+                    <TextInput
+                      style={styles.apnInput}
+                      value={claimName}
+                      onChangeText={setClaimName}
+                      placeholder="Nome del tracker"
+                      placeholderTextColor={C.text3}
+                      autoCorrect={false}
+                    />
+                    <Pressable
+                      style={[styles.apnBtn, (claiming || !claimName.trim()) && styles.dimmed]}
+                      disabled={claiming || !claimName.trim()}
+                      onPress={async () => {
+                        if (!deviceId) return
+                        setClaiming(true)
+                        try {
+                          await claimDevice(deviceId, claimName.trim())
+                          const devices = await listUserDevices()
+                          setDeviceInfo(devices.find((d) => d.id === deviceId) ?? null)
+                          setClaimDone(true)
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+                        } catch { /* ignore */ } finally {
+                          setClaiming(false)
+                        }
+                      }}
+                    >
+                      <Text style={styles.apnBtnText}>{claiming ? '…' : 'Associa'}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </>
+            ) : null
+          )}
+
+          <Sep />
+          <Pressable
+            style={styles.actionRow}
+            onPress={async () => {
+              await signOut()
+              router.replace('/login')
+            }}
+          >
+            <Text style={[styles.actionLabel, { color: C.red }]}>Esci dall'account</Text>
+          </Pressable>
+        </Card>
+      ) : (
+        <Pressable
+          style={[styles.applyBtn, { backgroundColor: C.text1, marginTop: 0 }]}
+          onPress={() => router.push('/login')}
+        >
+          <Text style={styles.applyBtnText}>Accedi per il tracking cloud</Text>
+        </Pressable>
+      )}
+
       <View style={{ height: S.xl }} />
     </ScrollView>
   )
@@ -486,6 +606,13 @@ const styles = StyleSheet.create({
   },
   toggleInfo: {
     flex: 1,
+  },
+
+  // Claim block (same layout as apnBlock)
+  claimBlock: {
+    paddingHorizontal: S.md,
+    paddingVertical: 14,
+    gap: 10,
   },
 
   // APN block

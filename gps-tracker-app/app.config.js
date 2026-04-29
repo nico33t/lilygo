@@ -1,4 +1,6 @@
 const IS_DEV = process.env.APP_VARIANT === 'development'
+const EAS_PROJECT_ID = '29a33dca-0355-455a-aa1a-cf38ba295f27'
+const REVERSED_CLIENT_ID = process.env.REVERSED_CLIENT_ID ?? 'com.googleusercontent.apps.REPLACE_ME'
 
 /** @type {import('expo/config').ExpoConfig} */
 module.exports = {
@@ -8,12 +10,16 @@ module.exports = {
   orientation: 'default',
   platforms: ['ios', 'android', 'web'],
   scheme: 'gpstracker',
-  web: {
-    bundler: 'metro',
-    output: 'single',
+  runtimeVersion: '0.0.2',
+  updates: {
+    url: `https://u.expo.dev/${EAS_PROJECT_ID}`,
+    enabled: true,
+    checkAutomatically: 'ON_LOAD',
   },
+  web: { bundler: 'metro', output: 'single' },
   plugins: [
     'expo-router',
+    'expo-updates',
     [
       'react-native-maps',
       {
@@ -32,20 +38,24 @@ module.exports = {
       },
     ],
     'expo-notifications',
+    [
+      '@react-native-google-signin/google-signin',
+      { iosUrlScheme: REVERSED_CLIENT_ID },
+    ],
+    'expo-apple-authentication',
   ],
-  experiments: {
-    typedRoutes: true,
-    newArchEnabled: true,
-  },
+  experiments: { typedRoutes: true, newArchEnabled: true },
   ios: {
     bundleIdentifier: IS_DEV
       ? 'com.nicotomassini.gps-tracker.dev'
       : 'com.nicotomassini.gps-tracker',
+    buildNumber: '1',
     infoPlist: {
       NSLocationWhenInUseUsageDescription:
         'GPS Tracker shows your position on the map.',
       NSLocationAlwaysUsageDescription:
         'GPS Tracker needs location to track your route.',
+      CFBundleURLTypes: [{ CFBundleURLSchemes: [REVERSED_CLIENT_ID] }],
     },
   },
   android: {
@@ -61,4 +71,5 @@ module.exports = {
       'android.permission.BLUETOOTH_CONNECT',
     ],
   },
+  extra: { eas: { projectId: EAS_PROJECT_ID } },
 }

@@ -63,6 +63,7 @@ struct GPSData {
   float lon = 0;
   float speed_kmh = 0;
   float altitude = 0;
+  float heading = 0;   // course over ground, degrees 0-360
   int vsat = 0;
   int usat = 0;
   float accuracy = 0;
@@ -654,17 +655,18 @@ static void txJsonChunked(const String& data) {
 // ─── GPS send ──────────────────────────────────────────────────────────────
 
 static void sendGPSData() {
-  StaticJsonDocument<384> doc;
-  doc["valid"]  = gps.valid;
-  doc["stored"] = gps.stored;
-  doc["lat"]    = gps.lat;
-  doc["lon"]   = gps.lon;
-  doc["speed"] = gps.speed_kmh;
-  doc["alt"]   = gps.altitude;
-  doc["vsat"]  = gps.vsat;
-  doc["usat"]  = gps.usat;
-  doc["acc"]   = gps.accuracy;
-  doc["hdop"]  = gps.accuracy;
+  StaticJsonDocument<448> doc;
+  doc["valid"]    = gps.valid;
+  doc["stored"]   = gps.stored;
+  doc["lat"]      = gps.lat;
+  doc["lon"]      = gps.lon;
+  doc["speed"]    = gps.speed_kmh;
+  doc["alt"]      = gps.altitude;
+  doc["heading"]  = gps.heading;
+  doc["vsat"]     = gps.vsat;
+  doc["usat"]     = gps.usat;
+  doc["acc"]      = gps.accuracy;
+  doc["hdop"]     = gps.accuracy;
 
   char t[24];
   if (gps.year > 0) {
@@ -744,6 +746,7 @@ static void readGPS() {
   String lonStr     = getField(data, 5);
   String altStr     = getField(data, 6);
   String spdStr     = getField(data, 7);
+  String cogStr     = getField(data, 8);  // course over ground, degrees
   String hdopStr    = getField(data, 11);
   String satViewStr = getField(data, 15);
   String satUsedStr = getField(data, 16);
@@ -786,6 +789,7 @@ static void readGPS() {
     gps.lon       = lonStr.toFloat();
     gps.altitude  = altStr.toFloat();
     gps.speed_kmh = spdStr.toFloat() * 1.852f;
+    if (cogStr.length() > 0) gps.heading = cogStr.toFloat();
     lastFixMs     = millis();
     saveFixToNVS();
     PMU.setChargingLedMode(XPOWERS_CHG_LED_BLINK_4HZ);

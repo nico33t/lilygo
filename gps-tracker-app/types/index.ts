@@ -13,6 +13,7 @@ export interface GPSData {
   lon: number
   speed: number
   alt: number
+  heading?: number   // course over ground, degrees 0-360
   vsat: number
   usat: number
   acc: number

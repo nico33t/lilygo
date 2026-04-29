@@ -1,9 +1,13 @@
 {
   "appId": "com.lilygo.gpstracker",
   "productName": "GPS Tracker",
+  "extraMetadata": {
+    "main": "electron/main.js"
+  },
   "files": [
     "dist/**",
-    "electron/**"
+    "electron/**",
+    "package.json"
   ],
   "directories": {
     "output": "release"
