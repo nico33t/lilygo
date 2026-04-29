@@ -6,6 +6,9 @@ import { saveLastDevice } from './bleCache'
 
 export { State as BleState }
 
+// eslint-disable-next-line no-undef
+const log = (...args: any[]) => { if (__DEV__) console.log(...args) }
+
 let _bleManager: BleManager | null = null
 try { _bleManager = new BleManager() } catch { /* BLE not available (Expo Go) */ }
 export const bleManager = _bleManager as BleManager
@@ -20,15 +23,17 @@ let msgBuffer = ''
 function scheduleReconnect() {
   if (isManualDisconnect || !currentDeviceId) return
   if (reconnectTimer) clearTimeout(reconnectTimer)
-  console.log('[BLE] Scheduling reconnect in', RECONNECT_DELAY_MS, 'ms')
+  log('[BLE] Scheduling reconnect in', RECONNECT_DELAY_MS, 'ms')
   reconnectTimer = setTimeout(() => bleConnect(currentDeviceId!), RECONNECT_DELAY_MS)
 }
 
 function parseNotification(raw: string) {
-  console.log('[BLE] parseNotification: raw b64 length =', raw.length)
+  log('[BLE] parseNotification: raw b64 =', raw)
   try {
     const text = atob(raw)
-    console.log('[BLE] decoded text (first 120):', text.slice(0, 120))
+    const hex = Array.from(text).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ')
+    log('[BLE] decoded hex:', hex)
+    log('[BLE] decoded utf8:', text)
     msgBuffer += text
 
     let i = 0
@@ -47,7 +52,7 @@ function parseNotification(raw: string) {
       }
 
       if (end === -1) {
-        console.log('[BLE] Incomplete JSON, buffering', msgBuffer.length, 'bytes')
+        log('[BLE] Incomplete JSON, buffering', msgBuffer.length, 'bytes')
         msgBuffer = msgBuffer.slice(start)
         break
       }
@@ -59,7 +64,7 @@ function parseNotification(raw: string) {
       try {
         const msg = JSON.parse(json) as any
         const type = msg?.type as string | undefined
-        console.log('[BLE] msg type:', type ?? 'gps', 'lat:', msg?.lat)
+        log('[BLE] msg type:', type ?? 'gps', 'lat:', msg?.lat)
         useTrackerStore.getState().setLastRx(Date.now())
         useTrackerStore.getState().setBleError(null)
         if (type === 'config') {
@@ -92,18 +97,18 @@ function parseNotification(raw: string) {
 
 function onMonitorError(error: { errorCode: number; message: string }) {
   if (error.errorCode === 201) {
-    console.log('[BLE] Monitor got 201 (device disconnected) — onDisconnected will handle')
+    log('[BLE] Monitor 201 (device disconnected) — onDisconnected will handle')
     return
   }
   const msg = `err ${error.errorCode}: ${error.message}`
   useTrackerStore.getState().setBleError(msg)
-  console.log('[BLE] Monitor error →', msg, '— restarting in 500ms')
+  log('[BLE] Monitor error →', msg, '— restarting in 500ms')
   setTimeout(() => {
     if (connectedDevice) {
-      console.log('[BLE] Retrying startMonitor after error', error.errorCode)
+      log('[BLE] Retrying startMonitor after error', error.errorCode)
       startMonitor()
     } else {
-      console.log('[BLE] Not retrying — connectedDevice is null')
+      log('[BLE] Not retrying — connectedDevice is null')
     }
   }, 500)
 }
@@ -112,10 +117,10 @@ function monitorCallback(
   error: { errorCode: number; message: string } | null,
   characteristic: { value?: string | null } | null
 ) {
-  console.log('[BLE] monitorCallback fired — error:', error?.errorCode ?? 'none', 'hasValue:', !!characteristic?.value)
+  log('[BLE] monitorCallback fired — error:', error?.errorCode ?? 'none', 'hasValue:', !!characteristic?.value)
   if (error) { onMonitorError(error); return }
   if (!characteristic?.value) {
-    console.log('[BLE] monitorCallback: characteristic.value is null/empty')
+    log('[BLE] monitorCallback: value is null/empty')
     return
   }
   parseNotification(characteristic.value)
@@ -123,37 +128,35 @@ function monitorCallback(
 
 function startMonitor() {
   if (!connectedDevice) {
-    console.log('[BLE] startMonitor: connectedDevice is null, aborting')
+    log('[BLE] startMonitor: connectedDevice is null, aborting')
     return
   }
-  console.log('[BLE] startMonitor: removing old subscription, setting up new one')
-  console.log('[BLE]   SERVICE:', BLE_SERVICE_UUID)
-  console.log('[BLE]   TX CHAR:', BLE_TX_UUID)
+  log('[BLE] startMonitor: SERVICE =', BLE_SERVICE_UUID, 'TX =', BLE_TX_UUID)
   txSubscription?.remove()
   txSubscription = connectedDevice.monitorCharacteristicForService(
     BLE_SERVICE_UUID,
     BLE_TX_UUID,
     monitorCallback as any
   )
-  console.log('[BLE] startMonitor: subscription object =', txSubscription ? 'set' : 'null')
+  log('[BLE] startMonitor: subscription =', txSubscription ? 'set' : 'null')
 }
 
 export async function bleConnect(deviceId: string) {
-  console.log('[BLE] bleConnect called for', deviceId)
+  log('[BLE] bleConnect called for', deviceId)
 
   if (connectedDevice) {
-    console.log('[BLE] connectedDevice already exists, checking isConnected...')
+    log('[BLE] connectedDevice already exists, checking isConnected...')
     const connected = await connectedDevice.isConnected().catch((e) => {
-      console.log('[BLE] isConnected threw:', e)
+      log('[BLE] isConnected threw:', e)
       return false
     })
-    console.log('[BLE] isConnected =', connected)
+    log('[BLE] isConnected =', connected)
     if (connected) {
-      console.log('[BLE] Already connected — calling startMonitor to ensure subscription active')
+      log('[BLE] Already connected — restarting monitor to ensure subscription active')
       startMonitor()
       return
     }
-    console.log('[BLE] Was set but not connected — proceeding with fresh connect')
+    log('[BLE] Was set but not connected — proceeding with fresh connect')
   }
 
   isManualDisconnect = false
@@ -165,32 +168,31 @@ export async function bleConnect(deviceId: string) {
   store.setStatus('connecting')
   store.setBleError(null)
 
-  console.log('[BLE] Connecting with MTU=512...')
+  log('[BLE] Connecting with MTU=512...')
   try {
     connectedDevice = await bleManager.connectToDevice(deviceId, { requestMTU: 512 })
-    console.log('[BLE] connectToDevice OK, MTU =', (connectedDevice as any).mtu ?? 'unknown')
+    log('[BLE] connectToDevice OK, MTU =', (connectedDevice as any).mtu ?? 'unknown')
 
-    console.log('[BLE] Discovering services and characteristics...')
+    log('[BLE] Discovering services and characteristics...')
     await connectedDevice.discoverAllServicesAndCharacteristics()
-    console.log('[BLE] Discovery complete')
+    log('[BLE] Discovery complete')
 
-    // Log all discovered services/characteristics for diagnosis
     try {
       const services = await connectedDevice.services()
-      console.log('[BLE] Services found:', services.length)
+      log('[BLE] Services found:', services.length)
       for (const svc of services) {
-        console.log('[BLE]   service:', svc.uuid)
+        log('[BLE]   service:', svc.uuid)
         const chars = await connectedDevice.characteristicsForService(svc.uuid)
         for (const c of chars) {
-          console.log('[BLE]     char:', c.uuid, 'isNotifiable:', c.isNotifiable, 'isReadable:', c.isReadable, 'isWritable:', c.isWritableWithResponse)
+          log('[BLE]     char:', c.uuid, 'notify:', c.isNotifiable, 'read:', c.isReadable, 'write:', c.isWritableWithResponse)
         }
       }
     } catch (e) {
-      console.log('[BLE] Service enumeration error:', e)
+      log('[BLE] Service enumeration error:', e)
     }
 
     connectedDevice.onDisconnected(() => {
-      console.log('[BLE] onDisconnected fired')
+      log('[BLE] onDisconnected fired')
       txSubscription?.remove()
       txSubscription = null
       connectedDevice = null
@@ -198,18 +200,18 @@ export async function bleConnect(deviceId: string) {
       scheduleReconnect()
     })
 
-    console.log('[BLE] Scheduling startMonitor in 500ms...')
+    log('[BLE] Scheduling startMonitor in 500ms...')
     setTimeout(() => {
-      console.log('[BLE] 500ms elapsed — calling startMonitor')
+      log('[BLE] 500ms elapsed — calling startMonitor')
       startMonitor()
     }, 500)
 
     saveLastDevice(deviceId).catch(() => {})
     store.setStatus('connected')
-    console.log('[BLE] Status set to connected, sending get_config')
+    log('[BLE] Status = connected, sending get_config')
     bleSendCommand({ cmd: 'get_config' })
   } catch (e) {
-    console.log('[BLE] bleConnect error:', e)
+    log('[BLE] bleConnect error:', e)
     useTrackerStore.getState().setStatus('disconnected')
     scheduleReconnect()
   }
@@ -217,29 +219,29 @@ export async function bleConnect(deviceId: string) {
 
 export async function bleSendCommand(cmd: WSCommand) {
   if (!connectedDevice) {
-    console.log('[BLE] bleSendCommand: no connectedDevice')
+    log('[BLE] bleSendCommand: no connectedDevice')
     return
   }
   try {
     const connected = await connectedDevice.isConnected()
     if (!connected) {
-      console.log('[BLE] bleSendCommand: device not connected')
+      log('[BLE] bleSendCommand: device not connected')
       return
     }
     const json = JSON.stringify(cmd)
     const b64 = btoa(json)
-    console.log('[BLE] bleSendCommand:', json)
+    log('[BLE] bleSendCommand:', json)
     await connectedDevice.writeCharacteristicWithResponseForService(
       BLE_SERVICE_UUID, BLE_RX_UUID, b64
     )
-    console.log('[BLE] bleSendCommand: write OK')
+    log('[BLE] bleSendCommand: write OK')
   } catch (e) {
-    console.log('[BLE] bleSendCommand error:', e)
+    log('[BLE] bleSendCommand error:', e)
   }
 }
 
 export function bleDisconnect() {
-  console.log('[BLE] bleDisconnect called')
+  log('[BLE] bleDisconnect called')
   isManualDisconnect = true
   currentDeviceId = null
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
