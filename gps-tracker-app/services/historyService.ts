@@ -1,17 +1,25 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { getBackend, Session } from './backendService'
 import type { TrackPoint } from '../types'
 
 const CACHE_KEY = (deviceId: string) => `history_cache_${deviceId}`
 
+async function safeStorage() {
+  try {
+    const AS = require('@react-native-async-storage/async-storage').default
+    if (AS && typeof AS.getItem === 'function') return AS as typeof import('@react-native-async-storage/async-storage').default
+  } catch {}
+  return null
+}
+
 export async function listSessions(deviceId: string, limit = 20): Promise<Session[]> {
+  const AS = await safeStorage()
   try {
     const backend = await getBackend()
     const sessions = await backend.listSessions(deviceId, limit)
-    await AsyncStorage.setItem(CACHE_KEY(deviceId), JSON.stringify(sessions.slice(0, 10)))
+    await AS?.setItem(CACHE_KEY(deviceId), JSON.stringify(sessions.slice(0, 10)))
     return sessions
   } catch {
-    const cached = await AsyncStorage.getItem(CACHE_KEY(deviceId))
+    const cached = await AS?.getItem(CACHE_KEY(deviceId))
     return cached ? JSON.parse(cached) : []
   }
 }

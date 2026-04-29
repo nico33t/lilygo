@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { TrackPoint } from '../types'
 
 export interface LiveData {
@@ -28,31 +27,30 @@ export interface TrackerBackend {
   getSessionPoints(sessionId: string, deviceId: string): Promise<TrackPoint[]>
 }
 
-const BACKEND_TYPE_KEY = 'BACKEND_TYPE'
-const BACKEND_URL_KEY  = 'BACKEND_URL'
-
 let _instance: TrackerBackend | null = null
+let _url = ''
 
 export async function getBackend(): Promise<TrackerBackend> {
   if (_instance) return _instance
-  const type = (await AsyncStorage.getItem(BACKEND_TYPE_KEY)) ?? 'firebase'
-  if (type === 'http') {
-    const { HttpBackend } = await import('./httpBackend')
-    const url = (await AsyncStorage.getItem(BACKEND_URL_KEY)) ?? ''
-    _instance = new HttpBackend(url)
-  } else {
-    const { FirebaseBackend } = await import('./firebaseBackend')
-    _instance = new FirebaseBackend()
-  }
+  const { HttpBackend } = await import('./httpBackend')
+  _instance = new HttpBackend(_url)
   return _instance
 }
 
 export async function setBackendUrl(url: string): Promise<void> {
-  await AsyncStorage.multiSet([[BACKEND_URL_KEY, url], [BACKEND_TYPE_KEY, 'http']])
+  _url = url
   _instance = null
+  // Persist without crashing if AsyncStorage unavailable
+  try {
+    const AS = require('@react-native-async-storage/async-storage').default
+    await AS?.setItem('BACKEND_URL', url)
+  } catch {}
 }
 
-export async function resetToFirebase(): Promise<void> {
-  await AsyncStorage.setItem(BACKEND_TYPE_KEY, 'firebase')
-  _instance = null
+export async function loadBackendUrl(): Promise<void> {
+  try {
+    const AS = require('@react-native-async-storage/async-storage').default
+    const saved = await AS?.getItem('BACKEND_URL')
+    if (saved) _url = saved
+  } catch {}
 }
