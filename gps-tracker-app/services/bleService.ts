@@ -54,6 +54,7 @@ function parseNotification(raw: string) {
       try {
         const msg = JSON.parse(json) as any
         const type = msg?.type as string | undefined
+        console.log('[BLE] msg type:', type ?? 'gps', 'lat:', msg?.lat)
         if (type === 'config') {
           const cfg = msg as WSConfigMessage
           useTrackerStore.getState().setConfig({
@@ -72,9 +73,9 @@ function parseNotification(raw: string) {
         } else {
           useTrackerStore.getState().setGPS(msg as GPSData)
         }
-      } catch { /* malformed */ }
+      } catch (e) { console.warn('[BLE] JSON parse error:', e) }
     }
-  } catch { /* bad base64 */ }
+  } catch (e) { console.warn('[BLE] base64 decode error:', e) }
 }
 
 export async function bleConnect(deviceId: string) {
