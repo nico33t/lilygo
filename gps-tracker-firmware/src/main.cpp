@@ -108,6 +108,7 @@ static NimBLECharacteristic* pTxChar     = nullptr;
 static NimBLECharacteristic* pRxChar     = nullptr;
 static bool                  bleConnected    = false;
 static volatile bool         txJsonChunkedImmediate = false;
+static volatile uint16_t     bleConnHandle   = 0xFFFF;
 
 // ─── Utility ────────────────────────────────────────────────────────────────
 
@@ -388,21 +389,22 @@ static void loadFixFromNVS() {
 
 class GPSServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* pSrv) override {
-    bleConnected     = true;
-    txJsonChunkedImmediate = true;
-    Serial.println("[BLE] Client connesso");
-    if (pTxChar) txJsonChunked(buildConfigJson());
+    bleConnected = true;
+    Serial.println("[BLE] onConnect (handle pending)");
   }
   void onConnect(NimBLEServer* pSrv, ble_gap_conn_desc* desc) override {
     bleConnected     = true;
+    bleConnHandle    = desc->conn_handle;
     txJsonChunkedImmediate = true;
     uint16_t mtu = ble_att_mtu(desc->conn_handle);
-    Serial.printf("[BLE] Client connesso addr=%s mtu=%u\n",
-                  NimBLEAddress(desc->peer_ota_addr).toString().c_str(), mtu);
+    Serial.printf("[BLE] Client connesso addr=%s handle=%u mtu=%u\n",
+                  NimBLEAddress(desc->peer_ota_addr).toString().c_str(),
+                  bleConnHandle, mtu);
     if (pTxChar) txJsonChunked(buildConfigJson());
   }
   void onDisconnect(NimBLEServer* pSrv) override {
-    bleConnected = false;
+    bleConnected  = false;
+    bleConnHandle = 0xFFFF;
     Serial.println("[BLE] Client disconnesso, riavvio advertising...");
     NimBLEDevice::startAdvertising();
   }
@@ -596,16 +598,34 @@ static void initWiFi() {
 #endif // ENABLE_WIFI
 
 // ─── BLE chunked notify ────────────────────────────────────────────────────
-// With MTU=23 the max ATT payload is 20 bytes; we fragment large payloads
-// so the app's msgBuffer can reassemble them into complete JSON objects.
+// Uses the raw NimBLE C API (ble_hs_mbuf_from_flat + ble_gatts_notify_custom)
+// to bypass any NimBLE C++ setValue/notify overload issues.
+// Chunk size adapts to the negotiated ATT MTU (payload = mtu - 3).
 static void txJsonChunked(const String& data) {
-  if (!bleConnected || !pTxChar) return;
-  const size_t CHUNK = 20;
-  for (size_t i = 0; i < data.length(); i += CHUNK) {
-    String chunk = data.substring(i, min(i + CHUNK, data.length()));
-    pTxChar->setValue(chunk.c_str());
-    pTxChar->notify();
-    delay(10);
+  if (!bleConnected || bleConnHandle == 0xFFFF || !pTxChar) return;
+
+  uint16_t mtu = ble_att_mtu(bleConnHandle);
+  if (mtu < 4) mtu = 23;
+  uint16_t maxPayload = mtu - 3;
+
+  uint16_t charHandle = pTxChar->getHandle();
+  const char* buf     = data.c_str();
+  size_t      total   = data.length();
+
+  Serial.printf("[BLE] txJson %u bytes, mtu=%u, payload=%u, handle=%u\n",
+                total, mtu, maxPayload, charHandle);
+
+  for (size_t i = 0; i < total; i += maxPayload) {
+    size_t len = total - i;
+    if (len > maxPayload) len = maxPayload;
+
+    struct os_mbuf* om = ble_hs_mbuf_from_flat(buf + i, len);
+    if (!om) { Serial.println("[BLE] mbuf alloc fail"); continue; }
+
+    int rc = ble_gatts_notify_custom(bleConnHandle, charHandle, om);
+    if (rc != 0) Serial.printf("[BLE] notify rc=%d chunk@%u\n", rc, i);
+
+    if (i + len < total) delay(10);
   }
 }
 

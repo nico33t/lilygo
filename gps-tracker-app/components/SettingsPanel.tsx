@@ -1,10 +1,14 @@
 import Slider from '@react-native-community/slider'
 import { useRef, useState } from 'react'
-import { Animated, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native'
+import {
+  Animated, Pressable, ScrollView, StyleSheet,
+  Switch, Text, TextInput, View,
+} from 'react-native'
 import * as Haptics from 'expo-haptics'
 import { bleSendCommand } from '../services/bleService'
 import { sendCommand as wsSendCommand } from '../services/wsService'
 import { useTrackerStore } from '../store/tracker'
+import { C, R, S } from '../constants/design'
 
 const IP_RE = /^\d{1,3}(\.\d{1,3}){3}$/
 
@@ -12,6 +16,37 @@ const GNSS_MODES = [
   { value: 0, label: 'GPS' },
   { value: 1, label: 'GPS + BeiDou' },
 ]
+
+// ─── Shared layout primitives ────────────────────────────────────────────────
+
+function SectionLabel({ title }: { title: string }) {
+  return <Text style={styles.sectionLabel}>{title}</Text>
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return <View style={styles.card}>{children}</View>
+}
+
+function Sep() {
+  return <View style={styles.sep} />
+}
+
+function InfoRow({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      {accent ? (
+        <View style={styles.pill}>
+          <Text style={styles.pillText}>{value}</Text>
+        </View>
+      ) : (
+        <Text style={styles.rowValue}>{value}</Text>
+      )}
+    </View>
+  )
+}
+
+// ─── Main component ──────────────────────────────────────────────────────────
 
 export default function SettingsPanel() {
   const status           = useTrackerStore((s) => s.status)
@@ -22,15 +57,16 @@ export default function SettingsPanel() {
   const proximityEnabled = useTrackerStore((s) => s.proximityAlarmEnabled)
   const setConfig        = useTrackerStore((s) => s.setConfig)
   const setProximity     = useTrackerStore((s) => s.setProximityAlarm)
+
   const connected = status === 'connected'
-  const isWifi = deviceId ? IP_RE.test(deviceId) : false
-  const sendCommand = isWifi ? wsSendCommand : bleSendCommand
+  const isWifi    = deviceId ? IP_RE.test(deviceId) : false
+  const send      = isWifi ? wsSendCommand : bleSendCommand
 
   const toastOpacity = useRef(new Animated.Value(0)).current
   const [toastVisible, setToastVisible] = useState(false)
-  const [restarting, setRestarting] = useState(false)
-  const [apn, setApn] = useState('em')
-  const [apnSent, setApnSent] = useState(false)
+  const [restarting, setRestarting]     = useState(false)
+  const [apn, setApn]                   = useState('em')
+  const [apnSent, setApnSent]           = useState(false)
 
   const showToast = () => {
     setToastVisible(true)
@@ -42,8 +78,9 @@ export default function SettingsPanel() {
   }
 
   const handleApply = () => {
-    sendCommand({ cmd: 'set_interval', value: config.interval_ms })
-    sendCommand({ cmd: 'set_gnss_mode', value: config.gnss_mode })
+    if (!connected) return
+    send({ cmd: 'set_interval', value: config.interval_ms })
+    send({ cmd: 'set_gnss_mode', value: config.gnss_mode })
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
     showToast()
   }
@@ -51,16 +88,18 @@ export default function SettingsPanel() {
   const handleRestartGPS = () => {
     if (!connected || restarting) return
     setRestarting(true)
-    sendCommand({ cmd: 'restart_gps' })
+    send({ cmd: 'restart_gps' })
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     setTimeout(() => setRestarting(false), 6000)
   }
 
   return (
     <ScrollView
+      style={styles.scroll}
       contentContainerStyle={styles.container}
       showsVerticalScrollIndicator={false}
     >
+      {/* ─── Not-connected banner ─────────────────────────────────────────── */}
       {!connected && (
         <View style={styles.banner}>
           <Text style={styles.bannerText}>
@@ -69,324 +108,467 @@ export default function SettingsPanel() {
         </View>
       )}
 
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Frequenza aggiornamento GPS</Text>
-          <Text style={styles.sectionBadge}>{config.interval_ms} ms</Text>
-        </View>
-        <Slider
-          style={styles.slider}
-          minimumValue={500}
-          maximumValue={5000}
-          step={100}
-          value={config.interval_ms}
-          onValueChange={(v) => setConfig({ ...config, interval_ms: v })}
-          minimumTrackTintColor="#ff385c"
-          maximumTrackTintColor="#dddddd"
-          thumbTintColor="#ff385c"
-          disabled={!connected}
+      {/* ─── Dispositivo ──────────────────────────────────────────────────── */}
+      <SectionLabel title="DISPOSITIVO" />
+      <Card>
+        <InfoRow
+          label="Firmware"
+          value={config.fw_version ? `v${config.fw_version}` : '—'}
+          accent
         />
-        <View style={styles.sliderLabels}>
-          <Text style={styles.sliderEdge}>500 ms</Text>
-          <Text style={styles.sliderEdge}>5000 ms</Text>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Modalità GNSS</Text>
-        <View style={styles.modeRow}>
-          {GNSS_MODES.map((mode) => {
-            const active = config.gnss_mode === mode.value
-            return (
-              <Pressable
-                key={mode.value}
-                style={[
-                  styles.modeBtn,
-                  active && styles.modeBtnActive,
-                  !connected && styles.modeBtnDisabled,
-                ]}
-                onPress={() =>
-                  connected && setConfig({ ...config, gnss_mode: mode.value })
-                }
-              >
-                <Text
-                  style={[
-                    styles.modeBtnText,
-                    active && styles.modeBtnTextActive,
-                  ]}
-                >
-                  {mode.label}
-                </Text>
-              </Pressable>
-            )
-          })}
-        </View>
-      </View>
-
-      <View style={styles.applyWrap}>
-        <Pressable
-          style={[styles.applyBtn, !connected && styles.applyBtnDisabled]}
-          onPress={handleApply}
-          disabled={!connected}
-        >
-          <Text style={styles.applyBtnText}>Applica</Text>
-        </Pressable>
-        {toastVisible && (
-          <Animated.View style={[styles.toast, { opacity: toastOpacity }]}>
-            <Text style={styles.toastText}>✓ Impostazioni applicate</Text>
-          </Animated.View>
+        {power && (
+          <>
+            <Sep />
+            <InfoRow
+              label="Batteria"
+              value={`${(power.bat_mv / 1000).toFixed(2)} V`}
+            />
+          </>
         )}
-      </View>
+      </Card>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Manutenzione</Text>
-        <Pressable
-          style={[styles.restartBtn, (!connected || restarting) && styles.applyBtnDisabled]}
-          onPress={handleRestartGPS}
-          disabled={!connected || restarting}
-        >
-          <Text style={styles.restartBtnText}>
-            {restarting ? 'Riavvio in corso…' : 'Riavvia GPS'}
-          </Text>
-        </Pressable>
+      {/* ─── Tracciamento GPS ─────────────────────────────────────────────── */}
+      <SectionLabel title="TRACCIAMENTO GPS" />
+      <Card>
+        {/* Interval slider */}
+        <View style={styles.sliderBlock}>
+          <View style={styles.sliderHeader}>
+            <Text style={styles.rowLabel}>Intervallo aggiornamento</Text>
+            <View style={styles.pill}>
+              <Text style={styles.pillText}>{config.interval_ms} ms</Text>
+            </View>
+          </View>
+          <Slider
+            style={styles.slider}
+            minimumValue={500}
+            maximumValue={5000}
+            step={100}
+            value={config.interval_ms}
+            onValueChange={(v) => setConfig({ ...config, interval_ms: v })}
+            minimumTrackTintColor={C.accent}
+            maximumTrackTintColor={C.sep}
+            thumbTintColor={C.accent}
+            disabled={!connected}
+          />
+          <View style={styles.sliderEdges}>
+            <Text style={styles.edgeLabel}>500 ms</Text>
+            <Text style={styles.edgeLabel}>5000 ms</Text>
+          </View>
+        </View>
+
+        <Sep />
+
+        {/* GNSS mode */}
+        <View style={styles.gnssBlock}>
+          <Text style={styles.rowLabel}>Modalità GNSS</Text>
+          <View style={styles.segmented}>
+            {GNSS_MODES.map((mode, i) => {
+              const active = config.gnss_mode === mode.value
+              return (
+                <Pressable
+                  key={mode.value}
+                  style={[
+                    styles.segBtn,
+                    i === 0 && styles.segBtnFirst,
+                    i === GNSS_MODES.length - 1 && styles.segBtnLast,
+                    active && styles.segBtnActive,
+                    !connected && styles.dimmed,
+                  ]}
+                  onPress={() => connected && setConfig({ ...config, gnss_mode: mode.value })}
+                >
+                  <Text style={[styles.segBtnText, active && styles.segBtnTextActive]}>
+                    {mode.label}
+                  </Text>
+                </Pressable>
+              )
+            })}
+          </View>
+        </View>
+      </Card>
+
+      {/* Apply button + toast */}
+      <Pressable
+        style={[styles.applyBtn, !connected && styles.dimmed]}
+        onPress={handleApply}
+        disabled={!connected}
+      >
+        <Text style={styles.applyBtnText}>Applica impostazioni</Text>
+      </Pressable>
+      {toastVisible && (
+        <Animated.View style={[styles.toast, { opacity: toastOpacity }]}>
+          <Text style={styles.toastText}>✓ Impostazioni applicate</Text>
+        </Animated.View>
+      )}
+
+      {/* ─── Sicurezza ────────────────────────────────────────────────────── */}
+      <SectionLabel title="SICUREZZA" />
+      <Card>
         <View style={styles.toggleRow}>
-          <Text style={styles.toggleLabel}>Allarme distanza BLE</Text>
+          <View style={styles.toggleInfo}>
+            <Text style={styles.rowLabel}>Allarme distanza BLE</Text>
+            <Text style={styles.rowHint}>Avvisa quando il tracker si allontana</Text>
+          </View>
           <Switch
             value={proximityEnabled}
             onValueChange={setProximity}
-            trackColor={{ true: '#ff385c', false: undefined }}
+            trackColor={{ true: C.accent, false: undefined }}
           />
         </View>
+      </Card>
 
-        {/* APN SIM */}
-        <View style={styles.apnRow}>
-          <TextInput
-            style={[styles.apnInput, !connected && styles.apnInputDisabled]}
-            value={apn}
-            onChangeText={(t) => { setApn(t); setApnSent(false) }}
-            placeholder="APN (es. em)"
-            placeholderTextColor="#aaa"
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={connected}
-          />
-          <Pressable
-            style={[styles.apnBtn, (!connected || apn.trim().length === 0) && styles.applyBtnDisabled]}
-            onPress={() => {
-              if (!connected || apn.trim().length === 0) return
-              sendCommand({ cmd: 'set_apn', value: apn.trim() })
-              setApnSent(true)
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-            }}
-            disabled={!connected || apn.trim().length === 0}
-          >
-            <Text style={styles.apnBtnText}>{apnSent ? '✓ Inviato' : 'Imposta APN'}</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Firmware</Text>
-          <Text style={styles.sectionBadge}>
-            {power ? `${(power.bat_mv / 1000).toFixed(2)}V · ` : ''}{config.fw_version ? `v${config.fw_version}` : '—'}
-          </Text>
-        </View>
-        {ota?.available && (
-          <View style={styles.otaCard}>
-            <Text style={styles.otaTitle}>Aggiornamento disponibile: {ota.version}</Text>
-            {ota.changelog ? <Text style={styles.otaChangelog}>{ota.changelog}</Text> : null}
-            {ota.progress != null ? (
-              <View style={styles.otaProgressBar}>
-                <View style={[styles.otaProgressFill, { width: `${ota.progress}%` as any }]} />
-              </View>
-            ) : (
-              <Pressable
-                style={[styles.applyBtn, !connected && styles.applyBtnDisabled]}
-                onPress={() => connected && sendCommand({ cmd: 'start_ota' })}
-                disabled={!connected}
-              >
-                <Text style={styles.applyBtnText}>Aggiorna firmware</Text>
-              </Pressable>
-            )}
+      {/* ─── Connettività ─────────────────────────────────────────────────── */}
+      <SectionLabel title="CONNETTIVITÀ" />
+      <Card>
+        <View style={styles.apnBlock}>
+          <Text style={styles.rowLabel}>APN SIM</Text>
+          <Text style={styles.rowHint}>Access point per la connessione dati LTE-M</Text>
+          <View style={styles.apnRow}>
+            <TextInput
+              style={[styles.apnInput, !connected && styles.dimmed]}
+              value={apn}
+              onChangeText={(t) => { setApn(t); setApnSent(false) }}
+              placeholder="es. em"
+              placeholderTextColor={C.text3}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={connected}
+            />
+            <Pressable
+              style={[styles.apnBtn, (!connected || apn.trim().length === 0) && styles.dimmed]}
+              onPress={() => {
+                if (!connected || apn.trim().length === 0) return
+                send({ cmd: 'set_apn', value: apn.trim() })
+                setApnSent(true)
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+              }}
+              disabled={!connected || apn.trim().length === 0}
+            >
+              <Text style={styles.apnBtnText}>{apnSent ? '✓ Inviato' : 'Imposta'}</Text>
+            </Pressable>
           </View>
-        )}
-      </View>
+        </View>
+      </Card>
+
+      {/* ─── Manutenzione ─────────────────────────────────────────────────── */}
+      <SectionLabel title="MANUTENZIONE" />
+      <Card>
+        <Pressable
+          style={[styles.actionRow, (!connected || restarting) && styles.dimmed]}
+          onPress={handleRestartGPS}
+          disabled={!connected || restarting}
+        >
+          <Text style={styles.actionLabel}>
+            {restarting ? 'Riavvio GPS in corso…' : 'Riavvia GPS'}
+          </Text>
+        </Pressable>
+      </Card>
+
+      {/* ─── OTA ──────────────────────────────────────────────────────────── */}
+      {ota?.available && (
+        <>
+          <SectionLabel title="AGGIORNAMENTO FIRMWARE" />
+          <Card>
+            <View style={styles.otaBlock}>
+              <Text style={styles.otaVersion}>Versione {ota.version} disponibile</Text>
+              {ota.changelog ? (
+                <Text style={styles.otaChangelog}>{ota.changelog}</Text>
+              ) : null}
+              {ota.progress != null ? (
+                <View style={styles.otaBarBg}>
+                  <View style={[styles.otaBarFill, { width: `${ota.progress}%` as any }]} />
+                </View>
+              ) : (
+                <Pressable
+                  style={[styles.applyBtn, styles.otaBtn, !connected && styles.dimmed]}
+                  onPress={() => connected && send({ cmd: 'start_ota' })}
+                  disabled={!connected}
+                >
+                  <Text style={styles.applyBtnText}>Installa aggiornamento</Text>
+                </Pressable>
+              )}
+            </View>
+          </Card>
+        </>
+      )}
+
+      <View style={{ height: S.xl }} />
     </ScrollView>
   )
 }
 
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: {
-    padding: 24,
-    gap: 28,
+  scroll: {
+    flex: 1,
+    backgroundColor: C.bg,
   },
+  container: {
+    paddingHorizontal: S.md,
+    paddingTop: S.md,
+  },
+
+  // Banner
   banner: {
-    backgroundColor: '#fff7ed',
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: '#FFF7ED',
+    borderRadius: R.md,
+    paddingVertical: 12,
+    paddingHorizontal: S.md,
+    marginBottom: S.md,
   },
   bannerText: {
     fontSize: 14,
-    color: '#92400e',
+    color: '#92400E',
     textAlign: 'center',
+    lineHeight: 20,
   },
-  section: {
-    gap: 12,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectionTitle: {
-    fontSize: 15,
+
+  // Section label
+  sectionLabel: {
+    fontSize: 12,
     fontWeight: '600',
-    color: '#222222',
+    color: C.text3,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginTop: S.lg,
+    marginBottom: S.sm,
+    paddingHorizontal: S.xs,
   },
-  sectionBadge: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#ff385c',
-    backgroundColor: '#fff0f3',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 20,
+
+  // Card
+  card: {
+    backgroundColor: C.card,
+    borderRadius: R.lg,
     overflow: 'hidden',
+  },
+
+  // Separator
+  sep: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.sep,
+    marginLeft: S.md,
+  },
+
+  // Generic row
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: S.md,
+    paddingVertical: 14,
+  },
+  rowLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: C.text1,
+  },
+  rowValue: {
+    fontSize: 15,
+    color: C.text2,
+  },
+  rowHint: {
+    fontSize: 12,
+    color: C.text3,
+    marginTop: 2,
+  },
+
+  // Pill badge
+  pill: {
+    backgroundColor: C.accentMid,
+    borderRadius: R.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  pillText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.accent,
+  },
+
+  // Slider block
+  sliderBlock: {
+    paddingHorizontal: S.md,
+    paddingTop: 14,
+    paddingBottom: 6,
+  },
+  sliderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
   slider: {
     width: '100%',
     height: 40,
+    marginHorizontal: -S.sm,
   },
-  sliderLabels: {
+  sliderEdges: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: -4,
+    marginTop: -6,
+    marginBottom: 4,
   },
-  sliderEdge: {
-    fontSize: 12,
-    color: '#9b9b9b',
+  edgeLabel: {
+    fontSize: 11,
+    color: C.text3,
   },
-  modeRow: {
-    flexDirection: 'row',
+
+  // GNSS segmented control
+  gnssBlock: {
+    paddingHorizontal: S.md,
+    paddingVertical: 14,
     gap: 10,
   },
-  modeBtn: {
+  segmented: {
+    flexDirection: 'row',
+    borderRadius: R.md,
+    borderWidth: 1.5,
+    borderColor: C.sep,
+    overflow: 'hidden',
+  },
+  segBtn: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: '#f7f7f7',
+    paddingVertical: 10,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
+    backgroundColor: C.card,
   },
-  modeBtnActive: {
-    borderColor: '#ff385c',
-    backgroundColor: '#fff0f3',
+  segBtnFirst: {},
+  segBtnLast: {},
+  segBtnActive: {
+    backgroundColor: C.accentMid,
   },
-  modeBtnDisabled: {
-    opacity: 0.45,
-  },
-  modeBtnText: {
+  segBtnText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#6a6a6a',
+    color: C.text2,
   },
-  modeBtnTextActive: {
-    color: '#ff385c',
+  segBtnTextActive: {
+    color: C.accent,
     fontWeight: '700',
   },
-  applyWrap: {
-    gap: 10,
-  },
+
+  // Apply button
   applyBtn: {
-    backgroundColor: '#ff385c',
-    borderRadius: 12,
-    paddingVertical: 14,
+    backgroundColor: C.accent,
+    borderRadius: R.lg,
+    paddingVertical: 15,
     alignItems: 'center',
-  },
-  applyBtnDisabled: {
-    opacity: 0.35,
+    marginTop: S.sm,
   },
   applyBtnText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#ffffff',
+    color: '#FFFFFF',
   },
+
+  // Toast
   toast: {
-    backgroundColor: '#1c1c1e',
-    borderRadius: 12,
+    backgroundColor: C.text1,
+    borderRadius: R.md,
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: S.md,
     alignItems: 'center',
+    marginTop: S.sm,
   },
   toastText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#ffffff',
+    color: '#FFFFFF',
   },
-  restartBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    backgroundColor: '#f2f2f7',
-    borderWidth: 1.5,
-    borderColor: '#d1d1d6',
-  },
-  restartBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#3c3c43',
-  },
+
+  // Toggle row
   toggleRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4,
+    paddingHorizontal: S.md,
+    paddingVertical: 14,
+    gap: S.md,
   },
-  toggleLabel: { fontSize: 15, color: '#3c3c43', fontWeight: '500' },
-  otaCard: {
-    backgroundColor: '#f0f7ff',
-    borderRadius: 12,
-    padding: 14,
+  toggleInfo: {
+    flex: 1,
+  },
+
+  // APN block
+  apnBlock: {
+    paddingHorizontal: S.md,
+    paddingVertical: 14,
     gap: 10,
-    borderWidth: 1,
-    borderColor: '#b3d4f5',
   },
-  otaTitle: { fontSize: 14, fontWeight: '700', color: '#1a56a0' },
-  otaChangelog: { fontSize: 13, color: '#444', lineHeight: 18 },
-  otaProgressBar: { height: 8, backgroundColor: '#ddd', borderRadius: 4, overflow: 'hidden' },
-  otaProgressFill: { height: '100%' as any, backgroundColor: '#007AFF', borderRadius: 4 },
   apnRow: {
     flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
+    gap: S.sm,
   },
   apnInput: {
     flex: 1,
     height: 44,
-    borderRadius: 10,
+    borderRadius: R.md,
     borderWidth: 1.5,
-    borderColor: '#d1d1d6',
+    borderColor: C.sep,
     paddingHorizontal: 12,
-    fontSize: 14,
-    color: '#222',
-    backgroundColor: '#f9f9f9',
-  },
-  apnInputDisabled: {
-    opacity: 0.45,
+    fontSize: 15,
+    color: C.text1,
+    backgroundColor: C.bg,
   },
   apnBtn: {
-    backgroundColor: '#ff385c',
-    borderRadius: 10,
-    paddingHorizontal: 14,
+    backgroundColor: C.accent,
+    borderRadius: R.md,
+    paddingHorizontal: S.md,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
   apnBtnText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
-    color: '#fff',
+    color: '#FFFFFF',
+  },
+
+  // Action row (restart)
+  actionRow: {
+    paddingHorizontal: S.md,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  actionLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: C.text1,
+  },
+
+  // OTA
+  otaBlock: {
+    paddingHorizontal: S.md,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  otaBtn: {
+    backgroundColor: C.blue,
+    marginTop: 4,
+  },
+  otaVersion: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: C.blue,
+  },
+  otaChangelog: {
+    fontSize: 13,
+    color: C.text2,
+    lineHeight: 18,
+  },
+  otaBarBg: {
+    height: 8,
+    backgroundColor: C.bg,
+    borderRadius: R.full,
+    overflow: 'hidden',
+  },
+  otaBarFill: {
+    height: '100%' as any,
+    backgroundColor: C.blue,
+    borderRadius: R.full,
+  },
+
+  // Utility
+  dimmed: {
+    opacity: 0.4,
   },
 })

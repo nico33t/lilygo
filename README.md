@@ -40,7 +40,7 @@ Sistema completo di tracciamento GPS: firmware ESP32-S3 + app mobile React Nativ
 | Modulo | Descrizione |
 |---|---|
 | **GPS** | Fix NMEA via AT commands; workaround bug B16 (accetta posizione se `lat/lon ≠ 0`) |
-| **BLE** | GATT service custom; notify JSON stream, write comandi; iBeacon advertising |
+| **BLE** | GATT service Nordic UART; notify JSON chunked via raw NimBLE C API (`ble_hs_mbuf_from_flat` + `ble_gatts_notify_custom`); MTU adattivo; iBeacon advertising |
 | **WiFi** | Access Point `GPS-Tracker` + WebSocket (porta 81) per debug |
 | **SIM** | AT+CCID / AT+COPS? / AT+CSQ / AT+CPSI? — operatore, ICCID, RSSI, tipo rete |
 | **Power** | State machine: VEHICLE → MOVING → IDLE → PARKED (deep sleep 15 min) |
@@ -147,9 +147,10 @@ gps-tracker-app/
 │   ├── session.tsx       — replay sessione su mappa
 │   └── settings.tsx      — impostazioni dispositivo
 ├── components/
-│   ├── GPSMap.tsx        — mappa con marcatore e polyline
-│   ├── StatusPanel.tsx   — dati GPS, SIM, batteria
-│   ├── SettingsPanel.tsx — slider intervallo, OTA, allarme prossimità
+│   ├── GPSMap/           — mappa con marcatore rotante (heading) e polyline
+│   ├── Icons/index.tsx   — set tipizzato di icone (AppIconName + shortcut semantici)
+│   ├── StatusPanel.tsx   — dati GPS, SIM, batteria, simulazione BLE
+│   ├── SettingsPanel.tsx — UI Airbnb-style: sezioni card, slider intervallo, OTA
 │   ├── ConnectionBadge.tsx
 │   └── SessionCard.tsx   — card sessione nella lista storico
 ├── services/
@@ -266,3 +267,5 @@ Il firmware `1951B16SIM7080` (preinstallato sulla board) ha un bug noto che impe
 - GPS e cellular **non** possono funzionare contemporaneamente (limitazione hardware SIM7080G) — il firmware alterna le due funzioni automaticamente
 - Antenna patch sul PCB: orientare il board con il lato antenna verso il cielo
 - Con SIM Emnify (o altro operatore NB-IoT/LTE-M): verificare che l'APN sia configurato correttamente nella SIM stessa
+
+
