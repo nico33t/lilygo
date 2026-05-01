@@ -47,6 +47,13 @@ module.exports = function withIOSBuildFixes(config) {
             end
           end
         end
+
+        # Fix missing Swift headers (like FirebaseAuth-Swift.h) when using modular headers without frameworks.
+        # We add the build directories where these headers are generated to the search paths.
+        config.build_settings['HEADER_SEARCH_PATHS'] ||= '$(inherited) '
+        ['FirebaseAuth', 'FirebaseFunctions', 'FirebaseStorage'].each do |pod|
+          config.build_settings['HEADER_SEARCH_PATHS'] << " \\\"\${PODS_CONFIGURATION_BUILD_DIR}/#{pod}\\\""
+        end
       end
     end
 
