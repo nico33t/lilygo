@@ -19,6 +19,7 @@ module.exports = {
   web: { bundler: 'metro', output: 'single' },
   plugins: [
     './plugins/withModularHeaders',
+    './plugins/withIOSBuildFixes',
     './plugins/withGoogleServicesFile',
     'expo-router',
     'expo-updates',
