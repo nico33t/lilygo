@@ -35,6 +35,7 @@ module.exports = {
     './plugins/withIOSBuildFixes',
     './plugins/withGoogleServicesFile',
     './plugins/withAndroidGoogleServicesWarning',
+    './plugins/withRNFBFirestoreHeaderFix',
     'expo-router',
     'expo-updates',
     [
