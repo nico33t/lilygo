@@ -228,7 +228,7 @@ const status = useTrackerStore((s) => s.status)
 
 useEffect(() => {
   if (status === 'disconnected') {
-    onBleDisconnectedUnexpectedly(proximityEnabled)
+    // onBleDisconnectedUnexpectedly(proximityEnabled)
   } else {
     cancelDisconnectAlarm()
   }

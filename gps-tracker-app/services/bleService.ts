@@ -276,8 +276,8 @@ export function startSimulation() {
     store.setLastRx(Date.now())
     store.setGPS({
       valid: true, stored: false,
-      lat: 45.4642 + Math.sin(t * 0.1) * 0.002,
-      lon: 9.1900  + Math.cos(t * 0.1) * 0.002,
+      lat: 45.4656 + Math.sin(t * 0.1) * 0.001,
+      lon: 9.1860  + Math.cos(t * 0.1) * 0.001,
       speed: 12 + Math.random() * 5,
       alt: 150 + Math.random() * 10,
       vsat: 8, usat: 6,

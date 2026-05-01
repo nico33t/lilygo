@@ -29,23 +29,11 @@ export interface TrackerBackend {
 
 let _instance: TrackerBackend | null = null
 let _url = ''
-let _firebaseMode = false
-
-export function setFirebaseMode(enabled: boolean): void {
-  if (_firebaseMode === enabled) return
-  _firebaseMode = enabled
-  _instance = null
-}
 
 export async function getBackend(): Promise<TrackerBackend> {
   if (_instance) return _instance
-  if (_firebaseMode) {
-    const { FirebaseBackend } = await import('./firebaseBackend')
-    _instance = new FirebaseBackend()
-  } else {
-    const { HttpBackend } = await import('./httpBackend')
-    _instance = new HttpBackend(_url)
-  }
+  const { HttpBackend } = await import('./httpBackend')
+  _instance = new HttpBackend(_url)
   return _instance
 }
 

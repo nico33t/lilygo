@@ -138,7 +138,5 @@ use_modular_headers!
     end
     # --- [withIOSBuildFixes] END ---
 
-
-
   end
 end

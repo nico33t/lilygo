@@ -6,6 +6,7 @@ interface LookAroundViewProps extends ViewProps {
     latitude: number;
     longitude: number;
   };
+  onSceneChange?: (event: { nativeEvent: { available: boolean } }) => void;
 }
 
 /**

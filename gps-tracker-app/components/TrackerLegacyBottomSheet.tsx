@@ -6,7 +6,9 @@ import {
   StyleSheet,
   View,
 } from 'react-native'
-import { C, R } from '../constants/design'
+import { C } from '../constants/design'
+
+const SHEET_RADIUS = 32
 
 type TrackerLegacyBottomSheetProps = {
   sheetHeight: number
@@ -53,8 +55,8 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: C.card,
-    borderTopLeftRadius: R.xl,
-    borderTopRightRadius: R.xl,
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 20,
@@ -66,8 +68,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     height: 32,
-    borderTopLeftRadius: R.xl,
-    borderTopRightRadius: R.xl,
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
   },
   handleBar: {
     width: 36,
@@ -77,4 +79,3 @@ const styles = StyleSheet.create({
   },
   sheetScroll: { flex: 1 },
 })
-

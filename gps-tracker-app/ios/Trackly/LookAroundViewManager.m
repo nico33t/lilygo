@@ -3,4 +3,5 @@
 
 @interface RCT_EXTERN_MODULE(LookAroundViewManager, RCTViewManager)
 RCT_EXPORT_VIEW_PROPERTY(coordinate, NSDictionary)
+RCT_EXPORT_VIEW_PROPERTY(onSceneChange, RCTDirectEventBlock)
 @end

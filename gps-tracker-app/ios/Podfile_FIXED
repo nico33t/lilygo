@@ -1,5 +1,3 @@
-# Set by expo-router. This enables Fabric-only features from react-native-screens
-ENV['RNS_GAMMA_ENABLED'] ||= '1'
 require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
 require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
 
@@ -41,11 +39,6 @@ target 'Trackly' do
     ]
   end
 
-# @generated begin react-native-maps - expo prebuild (DO NOT MODIFY) sync-6e84b14a1fae03c3232b35fa730d04616afc158e
-  rn_maps_path = File.dirname(`node --print "require.resolve('react-native-maps/package.json')"`) 
-  pod 'react-native-maps/Google', :path => rn_maps_path 
-
-# @generated end react-native-maps
   config = use_native_modules!(config_command)
 
   use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
@@ -137,8 +130,6 @@ use_modular_headers!
       end
     end
     # --- [withIOSBuildFixes] END ---
-
-
 
   end
 end

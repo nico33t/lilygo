@@ -10,17 +10,20 @@ import {
   StyleSheet,
   Text,
   View,
+  Modal,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import GPSMap from '../components/GPSMap'
 import TrackerLegacyBottomSheet from '../components/TrackerLegacyBottomSheet'
 import TrackerSheetContent from '../components/TrackerSheetContent'
 import TrackerSwiftBottomSheet from '../components/TrackerSwiftBottomSheet'
+import LookAroundView from '../components/LookAroundView'
 import { useTracker } from '../hooks/useTracker'
 import { useRemote } from '../hooks/useRemote'
 import { onBleDisconnectedUnexpectedly, cancelDisconnectAlarm } from '../services/proximityService'
 import { useTrackerStore } from '../store/tracker'
 import { C } from '../constants/design'
+
 const SCREEN_H = Dimensions.get('window').height
 const SHEET_H = SCREEN_H * 0.72
 const HANDLE_H = 32
@@ -42,9 +45,13 @@ export default function TrackerScreen() {
   const [mapBottomPadding, setMapBottomPadding] = useState(SHEET_H - SNAP_MID)
   const [swiftSheetOpen, setSwiftSheetOpen] = useState(true)
   const [isFollowing, setIsFollowing] = useState(true)
+  const [fullScreenLookAround, setFullScreenLookAround] = useState(false)
+  const [lookAroundAvailable, setLookAroundAvailable] = useState(false)
 
   useTracker(deviceId)
   const status = useTrackerStore((s) => s.status)
+  const lat = useTrackerStore((s) => s.gps?.lat)
+  const lon = useTrackerStore((s) => s.gps?.lon)
   const proximityEnabled = useTrackerStore((s) => s.proximityAlarmEnabled)
   useRemote(deviceId, status === 'disconnected')
 
@@ -75,7 +82,7 @@ export default function TrackerScreen() {
         if (vy < -0.6) {
           dest = cur < SNAP_MID - 20 ? SNAP_FULL : SNAP_MID
         } else if (vy > 0.6) {
-          dest = cur > SNAP_MID + 20 ? SNAP_MINI : SNAP_MID
+          dest = cur > SNAP_MINI - 20 ? SNAP_MINI : SNAP_MID
         } else {
           dest = nearest(cur)
         }
@@ -122,6 +129,15 @@ export default function TrackerScreen() {
   }
 
   const useSwiftSheet = false
+  const isAppleMapsProvider = Platform.OS === 'ios'
+  const canUseLookAround = isAppleMapsProvider && lookAroundAvailable
+  const hasCoords =
+    typeof lat === 'number' &&
+    typeof lon === 'number' &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    lat !== 0 &&
+    lon !== 0
 
   useEffect(() => {
     if (useSwiftSheet) {
@@ -139,9 +155,9 @@ export default function TrackerScreen() {
 
   return (
     <View style={styles.root}>
-      <GPSMap 
-        bottomPadding={mapBottomPadding} 
-        topPadding={headerHeight} 
+      <GPSMap
+        bottomPadding={mapBottomPadding}
+        topPadding={headerHeight}
         isFollowing={isFollowing}
         onMapDrag={() => setIsFollowing(false)}
       />
@@ -163,13 +179,31 @@ export default function TrackerScreen() {
         ]}
       >
         <View style={styles.floatingRow}>
-          {/* Left: Info Rectangle */}
-          <View style={styles.statusBox}>
-            <View style={[styles.statusDot, { backgroundColor: status === 'disconnected' ? C.text3 : C.green }]} />
-            <Text style={styles.statusBoxText}>
-              {status === 'disconnected' ? 'Offline' : 'Online'}
-            </Text>
-          </View>
+          {/* Left: Look Around Preview (only if available) */}
+          {canUseLookAround && (
+            <Pressable
+              style={styles.lookAroundPreviewContainer}
+              onPress={() => setFullScreenLookAround(true)}
+            >
+              <LookAroundView
+                coordinate={{ latitude: lat!, longitude: lon! }}
+                style={styles.lookAroundPreview}
+                onSceneChange={(e) => setLookAroundAvailable(e.nativeEvent.available)}
+              />
+            </Pressable>
+          )}
+
+          {/* Invisible LookAroundView to probe availability if the preview is hidden */}
+          {!canUseLookAround && isAppleMapsProvider && hasCoords && (
+            <LookAroundView
+              coordinate={{ latitude: lat!, longitude: lon! }}
+              style={{ width: 1, height: 1, opacity: 0, position: 'absolute', left: -100 }}
+              onSceneChange={(e) => {
+                console.log('[LookAround] Probe response:', e.nativeEvent.available);
+                setLookAroundAvailable(e.nativeEvent.available);
+              }}
+            />
+          )}
 
           <View style={{ flex: 1 }} />
 
@@ -199,7 +233,7 @@ export default function TrackerScreen() {
           style={styles.iconBtn}
           hitSlop={10}
         >
-          <Ionicons name="ellipsis-vertical" size={20} color={C.text1} />
+          <Ionicons name="settings-outline" size={22} color={C.text1} />
         </Pressable>
       </View>
 
@@ -222,6 +256,28 @@ export default function TrackerScreen() {
           <TrackerSheetContent variant="legacy" />
         </TrackerLegacyBottomSheet>
       )}
+
+      {/* Full Screen Look Around Modal */}
+      <Modal
+        visible={fullScreenLookAround}
+        animationType="slide"
+        onRequestClose={() => setFullScreenLookAround(false)}
+      >
+        <View style={styles.fullScreenModal}>
+          {isAppleMapsProvider ? (
+            <LookAroundView
+              coordinate={hasCoords ? { latitude: lat!, longitude: lon! } : { latitude: 44.5, longitude: 11.5 }}
+              style={styles.fullScreenLookAround}
+            />
+          ) : null}
+          <Pressable
+            style={styles.closeFullScreenBtn}
+            onPress={() => setFullScreenLookAround(false)}
+          >
+            <Ionicons name="close" size={24} color="#fff" />
+          </Pressable>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -267,30 +323,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  statusBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 14,
-    gap: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusBoxText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.text1,
-  },
   recenterBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -309,5 +341,41 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: C.accent,
+  },
+  lookAroundPreviewContainer: {
+    width: 120,
+    height: 80,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  lookAroundPreview: {
+    flex: 1,
+  },
+  fullScreenModal: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  fullScreenLookAround: {
+    flex: 1,
+  },
+  closeFullScreenBtn: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
   },
 })
