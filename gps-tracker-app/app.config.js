@@ -59,10 +59,10 @@ module.exports = {
         'Trackly needs location to track your route.',
       CFBundleURLTypes: [{ CFBundleURLSchemes: [REVERSED_CLIENT_ID] }],
     },
-    entitlements: {
+    /* entitlements: {
       'aps-environment': 'production',
       'com.apple.developer.applesignin': ['Default'],
-    },
+    }, */
   },
   android: {
     package: 'com.nicotomassini.gpstracker',
