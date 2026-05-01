@@ -2,92 +2,37 @@ const { withDangerousMod } = require('@expo/config-plugins')
 const fs = require('fs')
 const path = require('path')
 
-const BRIDGE_BLOCK = `#if __has_include("RCTDefines.h")
-#import "RCTDefines.h"
-#else
-#import <React/RCTDefines.h>
-#endif
-#if __has_include("RCTBridgeModule.h")
-#import "RCTBridgeModule.h"
-#else
-#import <React/RCTBridgeModule.h>
-#endif`
+const RNFB_IF_BLOCK_RE = /#if\s+__has_include\(<RNFBApp\/RNFBAppModule\.h>\)[\s\S]*?#endif\s*/g
+const RCT_DEFINES_IF_BLOCK_RE = /#if\s+__has_include\("RCTDefines\.h"\)[\s\S]*?#endif\s*/g
+const RCT_BRIDGE_IF_BLOCK_RE = /#if\s+__has_include\("RCTBridgeModule\.h"\)[\s\S]*?#endif\s*/g
 
-function isBridgeIf(line) {
-  const t = line.trim()
-  return t === '#if __has_include("RCTBridgeModule.h")' || t === '#if __has_include("RCTDefines.h")'
+function normalizeSource(src) {
+  return src
+    .replace(RNFB_IF_BLOCK_RE, '')
+    .replace(RCT_DEFINES_IF_BLOCK_RE, '')
+    .replace(RCT_BRIDGE_IF_BLOCK_RE, '')
+    .replace(/^\s*#import\s+["<]RCTDefines\.h[">]\s*\n?/gm, '')
+    .replace(/^\s*#import\s+<React\/RCTDefines\.h>\s*\n?/gm, '')
+    .replace(/^\s*#import\s+["<]RCTBridgeModule\.h[">]\s*\n?/gm, '')
+    .replace(/^\s*#import\s+<React\/RCTBridgeModule\.h>\s*\n?/gm, '')
+    .replace(/^\s*#import\s+<RNFBApp\/RNFBAppModule\.h>\s*\n?/gm, '')
 }
 
-function sanitizeRNFBFile(src) {
+function ensureImportAfterLastImport(src, importLine) {
   const lines = src.split('\n')
-
-  // Restrict cleanup to file preamble to avoid touching functional preprocessor logic.
-  let boundary = lines.findIndex((l) => {
-    const t = l.trim()
-    return t.startsWith('@interface') || t.startsWith('@implementation') || t === 'NS_ASSUME_NONNULL_BEGIN'
-  })
-  if (boundary === -1) boundary = lines.length
-
-  const preamble = lines.slice(0, boundary)
-  const tail = lines.slice(boundary)
-
-  const cleaned = []
-  for (let i = 0; i < preamble.length; i += 1) {
-    const line = preamble[i]
-    const t = line.trim()
-
-    if (isBridgeIf(line)) {
-      let depth = 1
-      i += 1
-      while (i < preamble.length && depth > 0) {
-        const c = preamble[i].trim()
-        if (c.startsWith('#if ')) depth += 1
-        else if (c === '#endif') depth -= 1
-        i += 1
-      }
-      i -= 1
-      continue
-    }
-
-    if (
-      line.includes('RCTBridgeModule.h') ||
-      line.includes('RCTDefines.h') ||
-      t === '#else' ||
-      t === '#endif'
-    ) {
-      continue
-    }
-
-    // Remove old workaround import to avoid module visibility side effects.
-    if (line.includes('RNFBAppModule.h')) continue
-
-    cleaned.push(line)
-  }
-
-  const hasBridgeContext =
-    src.includes('RCT_EXPORT_MODULE') ||
-    src.includes('RCT_EXPORT_METHOD') ||
-    src.includes('RCTPromiseRejectBlock') ||
-    src.includes('<RCTBridgeModule>')
-
-  if (!hasBridgeContext) {
-    return [...cleaned, ...tail].join('\n')
-  }
-
   let insertAt = -1
-  for (let i = 0; i < cleaned.length; i += 1) {
-    if (cleaned[i].trim().startsWith('#import ')) insertAt = i
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i].trim().startsWith('#import ')) {
+      insertAt = i
+      continue
+    }
+    if (insertAt >= 0 && lines[i].trim() !== '') break
   }
 
-  const out = cleaned.slice()
-  const blockLines = BRIDGE_BLOCK.split('\n')
-  if (insertAt >= 0) {
-    out.splice(insertAt + 1, 0, ...blockLines)
-  } else {
-    out.unshift(...blockLines, '')
-  }
+  if (insertAt < 0) return `${importLine}\n${src}`
 
-  return [...out, ...tail].join('\n')
+  lines.splice(insertAt + 1, 0, importLine)
+  return lines.join('\n')
 }
 
 module.exports = function withRNFBFirestoreHeaderFix(config) {
@@ -108,23 +53,48 @@ module.exports = function withRNFBFirestoreHeaderFix(config) {
         return config
       }
 
-      const targetFiles = fs
-        .readdirSync(firestoreDir)
-        .filter((f) => f.endsWith('.h') || f.endsWith('.m'))
-        .map((f) => path.join(firestoreDir, f))
+      const headerFiles = [
+        'RNFBFirestoreCommon.h',
+        'RNFBFirestoreModule.h',
+        'RNFBFirestoreCollectionModule.h',
+        'RNFBFirestoreDocumentModule.h',
+        'RNFBFirestoreTransactionModule.h',
+      ].map((f) => path.join(firestoreDir, f))
+
+      const moduleFiles = [
+        'RNFBFirestoreModule.m',
+        'RNFBFirestoreTransactionModule.m',
+        'RNFBFirestoreDocumentModule.m',
+        'RNFBFirestoreCollectionModule.m',
+      ].map((f) => path.join(firestoreDir, f))
 
       let changed = 0
-      for (const file of targetFiles) {
-        const src = fs.readFileSync(file, 'utf8')
-        const patched = sanitizeRNFBFile(src)
-        if (patched !== src) {
-          fs.writeFileSync(file, patched, 'utf8')
+
+      for (const file of headerFiles) {
+        if (!fs.existsSync(file)) continue
+        const original = fs.readFileSync(file, 'utf8')
+        let next = normalizeSource(original)
+        next = ensureImportAfterLastImport(next, '#import <RNFBApp/RNFBAppModule.h>')
+        next = ensureImportAfterLastImport(next, '#import <React/RCTBridgeModule.h>')
+        if (next !== original) {
+          fs.writeFileSync(file, next, 'utf8')
+          changed += 1
+        }
+      }
+
+      for (const file of moduleFiles) {
+        if (!fs.existsSync(file)) continue
+        const original = fs.readFileSync(file, 'utf8')
+        let next = normalizeSource(original)
+        next = ensureImportAfterLastImport(next, '#import <React/RCTBridgeModule.h>')
+        if (next !== original) {
+          fs.writeFileSync(file, next, 'utf8')
           changed += 1
         }
       }
 
       if (changed > 0) {
-        console.log(`✅ [withRNFBFirestoreHeaderFix] Sanitized ${changed} RNFBFirestore file(s)`)
+        console.log(`✅ [withRNFBFirestoreHeaderFix] Patched ${changed} RNFBFirestore file(s)`)
       } else {
         console.log('ℹ️  [withRNFBFirestoreHeaderFix] No changes needed')
       }
