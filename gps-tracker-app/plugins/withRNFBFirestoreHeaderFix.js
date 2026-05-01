@@ -35,6 +35,12 @@ function ensureImportAfterLastImport(src, importLine) {
   return lines.join('\n')
 }
 
+function ensureReactBridgeImports(src) {
+  let next = ensureImportAfterLastImport(src, '#import <React/RCTDefines.h>')
+  next = ensureImportAfterLastImport(next, '#import <React/RCTBridgeModule.h>')
+  return next
+}
+
 module.exports = function withRNFBFirestoreHeaderFix(config) {
   return withDangerousMod(config, [
     'ios',
@@ -75,7 +81,7 @@ module.exports = function withRNFBFirestoreHeaderFix(config) {
         const original = fs.readFileSync(file, 'utf8')
         let next = normalizeSource(original)
         next = ensureImportAfterLastImport(next, '#import <RNFBApp/RNFBAppModule.h>')
-        next = ensureImportAfterLastImport(next, '#import <React/RCTBridgeModule.h>')
+        next = ensureReactBridgeImports(next)
         if (next !== original) {
           fs.writeFileSync(file, next, 'utf8')
           changed += 1
@@ -86,7 +92,7 @@ module.exports = function withRNFBFirestoreHeaderFix(config) {
         if (!fs.existsSync(file)) continue
         const original = fs.readFileSync(file, 'utf8')
         let next = normalizeSource(original)
-        next = ensureImportAfterLastImport(next, '#import <React/RCTBridgeModule.h>')
+        next = ensureReactBridgeImports(next)
         if (next !== original) {
           fs.writeFileSync(file, next, 'utf8')
           changed += 1

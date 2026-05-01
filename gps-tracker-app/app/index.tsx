@@ -15,13 +15,10 @@ import { Device } from 'react-native-ble-plx'
 import { bleManager, BleState } from '../services/bleService'
 import { getLastDevice } from '../services/bleCache'
 import { BLE_DEVICE_NAME, APP_VERSION } from '../constants/tracker'
-import { DiscoveredDevice, scanSubnet } from '../services/discovery'
 import { listUserDevices, getTrialStatus, DeviceInfo } from '../services/deviceService'
 import { useAuth } from '../hooks/useAuth'
-import DeviceCard from '../components/DeviceCard'
 import { C, R, S } from '../constants/design'
 
-type ScanMode  = 'ble' | 'wifi'
 type ScanState = 'idle' | 'scanning' | 'done'
 
 // ─── Signal bars ──────────────────────────────────────────────────────────────
@@ -58,14 +55,11 @@ const IS_ELECTRON = typeof window !== 'undefined' && !!(window as any).electronI
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
 export default function DiscoveryScreen() {
-  const [mode, setMode]           = useState<ScanMode>('ble')
   const [scanState, setScanState] = useState<ScanState>('idle')
   const [bleDevices, setBleDevices] = useState<Device[]>([])
-  const [wifiDevices, setWifiDevices] = useState<DiscoveredDevice[]>([])
   const [bleOff, setBleOff]         = useState(false)
   const [lastDevice, setLastDevice] = useState<string | null>(null)
 
-  const wifiAbortRef    = useRef<AbortController | null>(null)
   const bleScanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [cloudDevices, setCloudDevices] = useState<DeviceInfo[]>([])
@@ -106,32 +100,17 @@ export default function DiscoveryScreen() {
     }, 15000)
   }, [])
 
-  const startWifiScan = useCallback(async () => {
-    wifiAbortRef.current?.abort()
-    const ctrl = new AbortController()
-    wifiAbortRef.current = ctrl
-    setWifiDevices([])
-    setScanState('scanning')
-    await scanSubnet(
-      (d) => setWifiDevices((prev) => prev.find((x) => x.ip === d.ip) ? prev : [...prev, d]),
-      ctrl.signal
-    )
-    if (!ctrl.signal.aborted) setScanState('done')
-  }, [])
-
   const startScan = useCallback(() => {
-    if (mode === 'ble') startBleScan()
-    else startWifiScan()
-  }, [mode, startBleScan, startWifiScan])
+    startBleScan()
+  }, [startBleScan])
 
   useEffect(() => {
     startScan()
     return () => {
       bleManager?.stopDeviceScan()
       if (bleScanTimerRef.current) clearTimeout(bleScanTimerRef.current)
-      wifiAbortRef.current?.abort()
     }
-  }, [mode])
+  }, [startScan])
 
   const handleSelectBle = (device: Device) => {
     bleManager.stopDeviceScan()
@@ -139,7 +118,7 @@ export default function DiscoveryScreen() {
     router.push(`/tracker?id=${encodeURIComponent(device.id)}`)
   }
 
-  const devices = mode === 'ble' ? bleDevices : wifiDevices
+  const devices = bleDevices
 
   // ── Cloud devices section ─────────────────────────────────────────────────
   const CloudSection = cloudDevices.length > 0 ? (
@@ -210,7 +189,7 @@ export default function DiscoveryScreen() {
       )}
 
       {/* Last device quick-connect */}
-      {mode === 'ble' && !bleOff && lastDevice && (
+      {!bleOff && lastDevice && (
         <Pressable
           style={({ pressed }) => [st.rowCard, { marginBottom: 8 }, pressed && st.pressed]}
           onPress={() => {
@@ -232,7 +211,7 @@ export default function DiscoveryScreen() {
       )}
 
       {/* BLE off warning */}
-      {mode === 'ble' && bleOff && (
+      {bleOff && (
         <View style={st.warning}>
           <Ionicons name="warning-outline" size={15} color="#92400E" />
           <Text style={st.warningText}>Attiva il Bluetooth per cercare il tracker</Text>
@@ -242,7 +221,7 @@ export default function DiscoveryScreen() {
       {/* Section label */}
       {devices.length > 0 && (
         <Text style={st.sectionLabel}>
-          {mode === 'ble' ? 'BLUETOOTH' : 'RETE LOCALE'} · {devices.length}
+          BLUETOOTH · {devices.length}
         </Text>
       )}
     </>
@@ -267,25 +246,11 @@ export default function DiscoveryScreen() {
         </Pressable>
       </View>
 
-      {/* ── Mode toggle + scan status ──────────────────────────────── */}
+      {/* ── BLE status + scan status ───────────────────────────────── */}
       <View style={st.controlRow}>
-        <View style={st.toggle}>
-          {(['ble', 'wifi'] as ScanMode[]).map((m) => (
-            <Pressable
-              key={m}
-              style={[st.toggleBtn, mode === m && st.toggleBtnOn]}
-              onPress={() => { if (mode !== m) setMode(m) }}
-            >
-              <Ionicons
-                name={m === 'ble' ? 'bluetooth' : 'wifi'}
-                size={13}
-                color={mode === m ? '#fff' : C.text2}
-              />
-              <Text style={[st.toggleText, mode === m && st.toggleTextOn]}>
-                {m === 'ble' ? 'Bluetooth' : 'WiFi'}
-              </Text>
-            </Pressable>
-          ))}
+        <View style={st.channelBadge}>
+          <Ionicons name="bluetooth" size={13} color={C.accent} />
+          <Text style={st.channelText}>Bluetooth</Text>
         </View>
 
         <View style={st.scanInfo}>
@@ -320,49 +285,43 @@ export default function DiscoveryScreen() {
         contentContainerStyle={st.listContent}
         ListHeaderComponent={ListHeader}
         renderItem={({ item, index }) => {
-          if (mode === 'ble') {
-            const d = item as Device
-            const isLast = index === bleDevices.length - 1
-            return (
-              <Pressable
-                style={({ pressed }) => [
-                  st.deviceRow,
-                  index === 0 && st.rowFirst,
-                  isLast && st.rowLast,
-                  pressed && st.pressed,
-                ]}
-                onPress={() => handleSelectBle(d)}
-              >
-                <View style={[st.iconCircle, { backgroundColor: `${C.blue}12` }]}>
-                  <Ionicons name="bluetooth" size={18} color={C.blue} />
-                </View>
-                <View style={st.rowInfo}>
-                  <Text style={st.rowTitle}>{d.name ?? d.localName ?? BLE_DEVICE_NAME}</Text>
-                  <Text style={st.rowSub} numberOfLines={1}>{d.id}</Text>
-                </View>
-                <SignalBars rssi={d.rssi} />
-                <Ionicons name="chevron-forward" size={16} color={C.text3} style={{ marginLeft: 6 }} />
-              </Pressable>
-            )
-          }
-          const w = item as DiscoveredDevice
-          return <DeviceCard device={w} onPress={() => router.push(`/tracker?ip=${w.ip}`)} />
+          const d = item as Device
+          const isLast = index === bleDevices.length - 1
+          return (
+            <Pressable
+              style={({ pressed }) => [
+                st.deviceRow,
+                index === 0 && st.rowFirst,
+                isLast && st.rowLast,
+                pressed && st.pressed,
+              ]}
+              onPress={() => handleSelectBle(d)}
+            >
+              <View style={[st.iconCircle, { backgroundColor: `${C.blue}12` }]}>
+                <Ionicons name="bluetooth" size={18} color={C.blue} />
+              </View>
+              <View style={st.rowInfo}>
+                <Text style={st.rowTitle}>{d.name ?? d.localName ?? BLE_DEVICE_NAME}</Text>
+                <Text style={st.rowSub} numberOfLines={1}>{d.id}</Text>
+              </View>
+              <SignalBars rssi={d.rssi} />
+              <Ionicons name="chevron-forward" size={16} color={C.text3} style={{ marginLeft: 6 }} />
+            </Pressable>
+          )
         }}
         ListEmptyComponent={
           scanState !== 'scanning' ? (
             <View style={st.empty}>
               <View style={st.emptyIcon}>
                 <Ionicons
-                  name={mode === 'ble' ? 'bluetooth-outline' : 'wifi-outline'}
+                  name="bluetooth-outline"
                   size={32}
                   color={C.text3}
                 />
               </View>
               <Text style={st.emptyTitle}>Nessun dispositivo trovato</Text>
               <Text style={st.emptyDesc}>
-                {mode === 'ble'
-                  ? 'Assicurati che il dispositivo sia acceso e vicino'
-                  : 'Connettiti alla rete WiFi del tracker'}
+                Assicurati che il dispositivo sia acceso e vicino
               </Text>
             </View>
           ) : null
@@ -414,27 +373,20 @@ const st = StyleSheet.create({
     paddingBottom: S.md,
     gap: S.md,
   },
-  toggle: {
+  channelBadge: {
     flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: C.card,
     borderRadius: R.xl ?? 24,
-    padding: 3,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    gap: 5,
     shadowColor: '#000',
     shadowOpacity: 0.04,
     shadowRadius: 3,
     shadowOffset: { width: 0, height: 1 },
   },
-  toggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    gap: 5,
-  },
-  toggleBtnOn: { backgroundColor: C.accent },
-  toggleText: { fontSize: 13, fontWeight: '600', color: C.text2 },
-  toggleTextOn: { color: '#fff' },
+  channelText: { fontSize: 13, fontWeight: '600', color: C.text1 },
 
   scanInfo: {
     flex: 1,
