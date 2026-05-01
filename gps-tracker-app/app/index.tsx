@@ -265,13 +265,6 @@ export default function DiscoveryScreen() {
             color={user ? C.accent : C.text2}
           />
         </Pressable>
-        <Pressable
-          style={({ pressed }) => [st.iconBtn, pressed && { opacity: 0.6 }]}
-          onPress={() => router.push('/settings')}
-          hitSlop={10}
-        >
-          <Ionicons name="settings-outline" size={20} color={C.text2} />
-        </Pressable>
       </View>
 
       {/* ── Mode toggle + scan status ──────────────────────────────── */}
