@@ -60,27 +60,76 @@ target 'Trackly' do
   )
 
   post_install do |installer|
+
+
+
+
+
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+      :ccache_enabled => ccache_enabled?(podfile_properties),
+    )
+
     # --- [withIOSBuildFixes] START ---
-    # Fix for both Pod targets and the Main App target
+    require 'fileutils'
+
+    puts "🔍 [withIOSBuildFixes] Applying gRPC build setting fixes..."
+
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
+        # Fix deployment target and other standard settings
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
         config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
         config.build_settings['DEFINES_MODULE'] = 'YES'
         config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+
+        # Fix gRPC modulemap paths which are often incorrectly pointed to Headers/Private
+        # which Cocoapods might not populate or might clean up.
+        # We patch BOTH the in-memory build settings and the generated .xcconfig files.
+        ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS'].each do |key|
+          if config.build_settings[key]
+            val = config.build_settings[key]
+            if val.is_a?(String)
+              val = val.gsub('${PODS_ROOT}/Headers/Private/grpc/gRPC-Core.modulemap', '${PODS_ROOT}/Target Support Files/gRPC-Core/gRPC-Core.modulemap')
+              val = val.gsub('${PODS_ROOT}/Headers/Private/grpcpp/gRPC-C++.modulemap', '${PODS_ROOT}/Target Support Files/gRPC-C++/gRPC-C++.modulemap')
+              config.build_settings[key] = val
+            elsif val.is_a?(Array)
+              config.build_settings[key] = val.map do |item|
+                item.gsub('${PODS_ROOT}/Headers/Private/grpc/gRPC-Core.modulemap', '${PODS_ROOT}/Target Support Files/gRPC-Core/gRPC-Core.modulemap')
+                    .gsub('${PODS_ROOT}/Headers/Private/grpcpp/gRPC-C++.modulemap', '${PODS_ROOT}/Target Support Files/gRPC-C++/gRPC-C++.modulemap')
+              end
+            end
+          end
+        end
+      end
+    end
+
+    # Directly patch .xcconfig files as well because Cocoapods often writes them AFTER target settings are processed
+    # or target settings just inherit from them.
+    Dir.glob("#{installer.sandbox.root}/**/*.xcconfig").each do |file_path|
+      content = File.read(file_path)
+      changed = false
+      if content.include?('Headers/Private/grpc/gRPC-Core.modulemap')
+        content.gsub!('Headers/Private/grpc/gRPC-Core.modulemap', 'Target Support Files/gRPC-Core/gRPC-Core.modulemap')
+        changed = true
+      end
+      if content.include?('Headers/Private/grpcpp/gRPC-C++.modulemap')
+        content.gsub!('Headers/Private/grpcpp/gRPC-C++.modulemap', 'Target Support Files/gRPC-C++/gRPC-C++.modulemap')
+        changed = true
+      end
+      if changed
+        File.write(file_path, content)
+        puts "✅ [withIOSBuildFixes] Patched .xcconfig: #{File.basename(file_path)}"
       end
     end
 
     installer.aggregate_targets.each do |aggregate_target|
       aggregate_target.user_project.targets.each do |target|
         target.build_configurations.each do |config|
-          # Fix deployment version mismatch (expected >= 2.0 <= 26.4.99)
           config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
-          
-          # Fix "Script has ambiguous dependencies" and Firebase config issues in Xcode 15+
           config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
-
-          # Fix modulemap and gRPC errors
           config.build_settings['DEFINES_MODULE'] = 'YES'
           config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
         end
@@ -96,11 +145,9 @@ target 'Trackly' do
     end
     # --- [withIOSBuildFixes] END ---
 
-    react_native_post_install(
-      installer,
-      config[:reactNativePath],
-      :mac_catalyst_enabled => false,
-      :ccache_enabled => ccache_enabled?(podfile_properties),
-    )
+
+
+
+
   end
 end
