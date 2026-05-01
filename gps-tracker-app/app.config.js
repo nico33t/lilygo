@@ -33,6 +33,7 @@ module.exports = {
       },
     ],
     './plugins/withAppleLookAround',
+    './plugins/withNativeMapClustering',
     './plugins/withIOSBuildFixes',
     './plugins/withRNFBIOSAppConfigure',
     './plugins/withGoogleServicesFile',
