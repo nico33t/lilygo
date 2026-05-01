@@ -14,11 +14,10 @@ const STILL_SPEED_KMH = 1
 const SHOW_DELAY_MS   = 1000
 const LABEL_UPDATE_MS = 30_000
 const MAP_SETTLE_MS   = 250   // delay after onRegionChangeComplete before re-showing
-const HAS_GOOGLE_MAPS_KEY =
-  Platform.OS === 'ios'
-    ? Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_KEY)
-    : Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY)
-const MAP_PROVIDER = HAS_GOOGLE_MAPS_KEY ? PROVIDER_GOOGLE : undefined
+const MAP_PROVIDER =
+  Platform.OS === 'android' && process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY
+    ? PROVIDER_GOOGLE
+    : undefined
 
 function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000)
