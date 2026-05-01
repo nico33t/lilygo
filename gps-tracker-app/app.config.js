@@ -24,7 +24,14 @@ module.exports = {
   },
   web: { bundler: 'metro', output: 'single' },
   plugins: [
-    './plugins/withModularHeaders',
+    [
+      'expo-build-properties',
+      {
+        ios: {
+          useFrameworks: 'static',
+        },
+      },
+    ],
     './plugins/withIOSBuildFixes',
     './plugins/withGoogleServicesFile',
     './plugins/withAndroidGoogleServicesWarning',

@@ -4,7 +4,8 @@ const path = require('path')
 
 /**
  * Expo Config Plugin to apply iOS build fixes during prebuild.
- * This avoids direct modifications to the /ios folder which are lost on prebuild.
+ * This unified plugin handles both global Podfile settings (frameworks, modular headers)
+ * and post_install build setting patches.
  */
 module.exports = function withIOSBuildFixes(config) {
   return withDangerousMod(config, [
@@ -15,11 +16,21 @@ module.exports = function withIOSBuildFixes(config) {
 
       let content = fs.readFileSync(podfilePath, 'utf8')
 
+      // 1. Ensure use_modular_headers! is present (frameworks handled by expo-build-properties)
+      if (!content.includes('use_modular_headers!')) {
+        console.log('✅ [withIOSBuildFixes] Injecting use_modular_headers!')
+        content = content.replace(
+          /use_frameworks!.*\n/,
+          "$&use_modular_headers!\n"
+        )
+      }
+
+      // 2. Prepare the post_install fixes block
       const buildFixesBlock = `
     # --- [withIOSBuildFixes] START ---
     require 'fileutils'
 
-    puts "🔍 [withIOSBuildFixes] Applying gRPC build setting fixes..."
+    puts "🔍 [withIOSBuildFixes] Applying build setting fixes..."
 
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
@@ -30,8 +41,6 @@ module.exports = function withIOSBuildFixes(config) {
         config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
 
         # Fix gRPC modulemap paths which are often incorrectly pointed to Headers/Private
-        # which Cocoapods might not populate or might clean up.
-        # We patch BOTH the in-memory build settings and the generated .xcconfig files.
         ['OTHER_CFLAGS', 'OTHER_CPLUSPLUSFLAGS'].each do |key|
           if config.build_settings[key]
             val = config.build_settings[key]
@@ -47,31 +56,23 @@ module.exports = function withIOSBuildFixes(config) {
             end
           end
         end
-
-        # Fix missing Swift headers (like FirebaseAuth-Swift.h) when using modular headers without frameworks.
-        # We add the build directories where these headers are generated to the search paths.
-        config.build_settings['HEADER_SEARCH_PATHS'] ||= '$(inherited) '
-        ['FirebaseAuth', 'FirebaseFunctions', 'FirebaseStorage'].each do |pod|
-          config.build_settings['HEADER_SEARCH_PATHS'] << " \\\"\${PODS_CONFIGURATION_BUILD_DIR}/#{pod}\\\""
-        end
       end
     end
 
-    # Directly patch .xcconfig files as well because Cocoapods often writes them AFTER target settings are processed
-    # or target settings just inherit from them.
+    # Directly patch .xcconfig files for gRPC modulemaps
     Dir.glob("#{installer.sandbox.root}/**/*.xcconfig").each do |file_path|
-      content = File.read(file_path)
-      changed = false
-      if content.include?('Headers/Private/grpc/gRPC-Core.modulemap')
-        content.gsub!('Headers/Private/grpc/gRPC-Core.modulemap', 'Target Support Files/gRPC-Core/gRPC-Core.modulemap')
-        changed = true
+      xc_content = File.read(file_path)
+      xc_changed = false
+      if xc_content.include?('Headers/Private/grpc/gRPC-Core.modulemap')
+        xc_content.gsub!('Headers/Private/grpc/gRPC-Core.modulemap', 'Target Support Files/gRPC-Core/gRPC-Core.modulemap')
+        xc_changed = true
       end
-      if content.include?('Headers/Private/grpcpp/gRPC-C++.modulemap')
-        content.gsub!('Headers/Private/grpcpp/gRPC-C++.modulemap', 'Target Support Files/gRPC-C++/gRPC-C++.modulemap')
-        changed = true
+      if xc_content.include?('Headers/Private/grpcpp/gRPC-C++.modulemap')
+        xc_content.gsub!('Headers/Private/grpcpp/gRPC-C++.modulemap', 'Target Support Files/gRPC-C++/gRPC-C++.modulemap')
+        xc_changed = true
       end
-      if changed
-        File.write(file_path, content)
+      if xc_changed
+        File.write(file_path, xc_content)
         puts "✅ [withIOSBuildFixes] Patched .xcconfig: #{File.basename(file_path)}"
       end
     end
@@ -97,11 +98,10 @@ module.exports = function withIOSBuildFixes(config) {
     # --- [withIOSBuildFixes] END ---
 `
 
-      // Remove any existing block first to avoid duplicates
+      // 3. Insert the block into the Podfile
       const markerRegex = /[ \t]*# --- \[withIOSBuildFixes\] START ---[\s\S]*?# --- \[withIOSBuildFixes\] END ---\n?/m
       content = content.replace(markerRegex, '')
 
-      // Find the best place to insert: after react_native_post_install or at the start of post_install
       const rnPostInstallPattern = /(react_native_post_install\([\s\S]*?\n[ \t]*\))/
       const postInstallPattern = /(post_install do \|installer\|)/
 
@@ -112,7 +112,8 @@ module.exports = function withIOSBuildFixes(config) {
       }
 
       fs.writeFileSync(podfilePath, content, 'utf8')
-      console.log('✅ [withIOSBuildFixes] Applied iOS build fixes to Podfile')
+      fs.writeFileSync(path.join(config.modRequest.platformProjectRoot, 'Podfile_FIXED'), content, 'utf8')
+      console.log('✅ [withIOSBuildFixes] Applied all iOS build fixes to Podfile')
       return config
     },
   ])
