@@ -23,7 +23,7 @@ use_modular_headers!
 
 prepare_react_native_project!
 
-target 'GPSTracker' do
+target 'Trackly' do
   use_expo_modules!
 
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
@@ -61,23 +61,35 @@ target 'GPSTracker' do
 
   post_install do |installer|
     # --- [withIOSBuildFixes] START ---
+    # Fix for both Pod targets and the Main App target
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
-        # Fix deployment version mismatch (expected >= 2.0 <= 26.4.99)
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
-        
-        # Fix "Script has ambiguous dependencies" and Firebase config issues in Xcode 15+
         config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
+        config.build_settings['DEFINES_MODULE'] = 'YES'
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
       end
-      
-      # Mark problematic scripts to run every time to avoid ambiguous dependency warnings
-      target.build_phases.each do |phase|
-        if phase.respond_to?(:name) && (
-          phase.name == '[CP-User] [RNFB] Core Configuration' || 
-          phase.name == '[Expo Dev Launcher] Strip Local Network Keys for Release'
-        )
-          if phase.respond_to?(:always_out_of_date)
-            phase.always_out_of_date = '1'
+    end
+
+    installer.aggregate_targets.each do |aggregate_target|
+      aggregate_target.user_project.targets.each do |target|
+        target.build_configurations.each do |config|
+          # Fix deployment version mismatch (expected >= 2.0 <= 26.4.99)
+          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+          
+          # Fix "Script has ambiguous dependencies" and Firebase config issues in Xcode 15+
+          config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
+
+          # Fix modulemap and gRPC errors
+          config.build_settings['DEFINES_MODULE'] = 'YES'
+          config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+        end
+        target.build_phases.each do |phase|
+          if phase.respond_to?(:name) && (
+            phase.name == '[CP-User] [RNFB] Core Configuration' || 
+            phase.name == '[Expo Dev Launcher] Strip Local Network Keys for Release'
+          )
+            phase.always_out_of_date = '1' if phase.respond_to?(:always_out_of_date)
           end
         end
       end

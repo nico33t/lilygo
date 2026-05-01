@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-               BuildableName = "GPSTracker.app"
-               BlueprintName = "GPSTracker"
-               ReferencedContainer = "container:GPSTracker.xcodeproj">
+               BuildableName = "Trackly.app"
+               BlueprintName = "Trackly"
+               ReferencedContainer = "container:Trackly.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -33,9 +33,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "00E356ED1AD99517003FC87E"
-               BuildableName = "GPSTrackerTests.xctest"
-               BlueprintName = "GPSTrackerTests"
-               ReferencedContainer = "container:GPSTracker.xcodeproj">
+               BuildableName = "TracklyTests.xctest"
+               BlueprintName = "TracklyTests"
+               ReferencedContainer = "container:Trackly.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -55,9 +55,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-            BuildableName = "GPSTracker.app"
-            BlueprintName = "GPSTracker"
-            ReferencedContainer = "container:GPSTracker.xcodeproj">
+            BuildableName = "Trackly.app"
+            BlueprintName = "Trackly"
+            ReferencedContainer = "container:Trackly.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -72,9 +72,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-            BuildableName = "GPSTracker.app"
-            BlueprintName = "GPSTracker"
-            ReferencedContainer = "container:GPSTracker.xcodeproj">
+            BuildableName = "Trackly.app"
+            BlueprintName = "Trackly"
+            ReferencedContainer = "container:Trackly.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
