@@ -12,6 +12,7 @@ import {
   getClusterProviderTuning,
   isNativeClusteringAvailable,
 } from '../services/nativeClustering'
+import { getSharedMarkerImageSource } from '../services/mapMarkerImage'
 import type { ClusterFeature } from '../types/clustering'
 
 const MAP_PROVIDER =
@@ -21,6 +22,13 @@ const MAP_PROVIDER =
     : undefined
 
 const CENTER = { latitude: 45.4642, longitude: 9.19 } // Milano
+const SHARED_MARKER_IMAGE = getSharedMarkerImageSource()
+
+function getDatasetTuning(size: 50 | 500 | 5000) {
+  if (size === 50) return { radius: 42, minPoints: 2, maxZoom: 22 }
+  if (size === 500) return { radius: 44, minPoints: 2, maxZoom: 22 }
+  return { radius: 40, minPoints: 2, maxZoom: 22 }
+}
 
 export default function ClusterTestScreen() {
   const insets = useSafeAreaInsets()
@@ -42,6 +50,7 @@ export default function ClusterTestScreen() {
   const [leavesCount, setLeavesCount] = useState(0)
   const runIdRef = useRef(0)
   const clusterTuning = useMemo(() => getClusterProviderTuning(MAP_PROVIDER), [])
+  const datasetTuning = useMemo(() => getDatasetTuning(size), [size])
 
   const markers = useMemo(() => {
     const out: Array<{ id: string; latitude: number; longitude: number; heading: number }> = []
@@ -65,6 +74,15 @@ export default function ClusterTestScreen() {
   )
 
   useEffect(() => {
+    if (!mapRef.current || markers.length === 0) return
+    const coords = markers.map((m) => ({ latitude: m.latitude, longitude: m.longitude }))
+    mapRef.current.fitToCoordinates(coords, {
+      animated: true,
+      edgePadding: { top: 80, right: 60, bottom: 80, left: 60 },
+    })
+  }, [markers, size])
+
+  useEffect(() => {
     if (!isNativeClusteringAvailable()) {
       setClusters(
         inputPoints.map((p) => ({
@@ -78,7 +96,7 @@ export default function ClusterTestScreen() {
       return
     }
     const runId = ++runIdRef.current
-    const zoom = Math.max(0, Math.min(22, Math.round(Math.log2(360 / region.longitudeDelta))))
+    const zoom = Math.max(0, Math.min(22, Math.floor(Math.log2(360 / region.longitudeDelta))))
     const bounds = {
       north: region.latitude + region.latitudeDelta / 2,
       south: region.latitude - region.latitudeDelta / 2,
@@ -89,6 +107,9 @@ export default function ClusterTestScreen() {
     buildNativeClusters(inputPoints, zoom, bounds, {
       ...clusterTuning,
       datasetId: `cluster_test_${size}`,
+      radius: datasetTuning.radius,
+      minPoints: datasetTuning.minPoints,
+      maxZoom: datasetTuning.maxZoom,
     })
       .then((res) => {
         if (runId !== runIdRef.current) return
@@ -105,7 +126,7 @@ export default function ClusterTestScreen() {
         if (runId !== runIdRef.current) return
         setClusters([])
       })
-  }, [clusterTuning, inputPoints, region, size])
+  }, [clusterTuning, datasetTuning, inputPoints, region, size])
 
   const onClusterPress = async (feature: ClusterFeature) => {
     if (feature.type !== 'cluster' || feature.count <= 1 || !mapRef.current) return
@@ -192,7 +213,8 @@ export default function ClusterTestScreen() {
               anchor={{ x: 0.5, y: 0.5 }}
               flat
               rotation={sourceMarker?.heading ?? 0}
-              image={require('../assets/marker.png')}
+              tracksViewChanges={false}
+              image={SHARED_MARKER_IMAGE as any}
             />
           )
         })}

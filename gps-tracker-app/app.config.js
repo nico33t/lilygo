@@ -34,6 +34,7 @@ module.exports = {
     ],
     './plugins/withAppleLookAround',
     './plugins/withNativeMapClustering',
+    './plugins/native-marker-image-cache',
     './plugins/withIOSBuildFixes',
     './plugins/withRNFBIOSAppConfigure',
     './plugins/withGoogleServicesFile',

@@ -5,6 +5,7 @@ import { Canvas, Group, Path, RoundedRect, Shadow, Skia, Text, useFont } from '@
 import Animated, { createAnimatedComponent, useAnimatedProps, useDerivedValue, useSharedValue, withSpring, withDelay } from 'react-native-reanimated'
 import { useTrackerStore } from '../../store/tracker'
 import { C } from '../../constants/design'
+import { getSharedMarkerImageSource } from '../../services/mapMarkerImage'
 
 const DEFAULT_REGION: Region = {
   latitude: 44.5,
@@ -18,7 +19,8 @@ const SHOW_DELAY_MS = 1000
 const LABEL_UPDATE_MS = 30_000
 const MAP_SETTLE_MS = 250   // delay after onRegionChangeComplete before re-showing
 const POSITION_CIRCLE_RADIUS_M = 18
-const MAP_PROVIDER = PROVIDER_DEFAULT;
+const MAP_PROVIDER = PROVIDER_GOOGLE;
+const SHARED_MARKER_IMAGE = getSharedMarkerImageSource()
 
 const AnimatedCircle = createAnimatedComponent(Circle)
 const AnimatedMarker = createAnimatedComponent(Marker)
@@ -338,7 +340,7 @@ export default function GPSMap({ bottomPadding = 0, topPadding = 0, onMapDrag, i
             />
             <AnimatedMarker
               animatedProps={animatedMarkerProps}
-              image={require('../../assets/marker.png')}
+              image={SHARED_MARKER_IMAGE as any}
               anchor={{ x: 0.5, y: 0.5 }}
               rotation={finalHeading}
               flat

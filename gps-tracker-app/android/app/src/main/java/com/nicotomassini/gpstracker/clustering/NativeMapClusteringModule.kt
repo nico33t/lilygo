@@ -4,6 +4,7 @@ import com.facebook.react.bridge.*
 import java.util.concurrent.Executors
 import kotlin.math.floor
 import kotlin.math.pow
+import kotlin.math.roundToInt
 
 private data class ClusterEntity(
   val id: String,
@@ -143,7 +144,7 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
   }
 
   private fun bboxKey(bounds: DoubleArray): String {
-    fun q(v: Double): Int = (v * 1000.0).toInt()
+    fun q(v: Double): Int = (v * 1000.0).roundToInt()
     return "${q(bounds[0])}_${q(bounds[1])}_${q(bounds[2])}_${q(bounds[3])}"
   }
 

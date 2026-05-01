@@ -13,6 +13,7 @@ import {
   getClusterProviderTuning,
   isNativeClusteringAvailable,
 } from '../services/nativeClustering'
+import { getSharedMarkerImageSource } from '../services/mapMarkerImage'
 import type { ClusterFeature } from '../types/clustering'
 
 const MAP_PROVIDER =
@@ -25,6 +26,7 @@ const CLUSTER_RADIUS = 56
 const CLUSTER_MIN_POINTS = 3
 const CLUSTER_MAX_ZOOM = 18
 const CLUSTER_POINT_THRESHOLD = 80
+const SHARED_MARKER_IMAGE = getSharedMarkerImageSource()
 
 export default function SessionScreen() {
   const { id, device } = useLocalSearchParams<{ id: string; device: string }>()
@@ -141,7 +143,7 @@ export default function SessionScreen() {
                 />
                 <Marker
                   coordinate={{ latitude: current.lat, longitude: current.lon }}
-                  image={require('../assets/marker.png')}
+                  image={SHARED_MARKER_IMAGE as any}
                 />
               </>
             )}
