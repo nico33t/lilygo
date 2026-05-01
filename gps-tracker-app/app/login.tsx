@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
-import { signInWithGoogle, signInWithApple, isAppleAvailable } from '../services/authService'
+import { formatAuthError, signInWithGoogle, signInWithApple, isAppleAvailable } from '../services/authService'
 import { C, R, S } from '../constants/design'
 
 export default function LoginScreen() {
@@ -20,8 +20,9 @@ export default function LoginScreen() {
       await signInWithGoogle()
       router.replace('/')
     } catch (e: any) {
+      console.log('[Auth][Google] signIn error:', e)
       if (e?.code !== 'SIGN_IN_CANCELLED') {
-        setError('Accesso con Google non riuscito. Riprova.')
+        setError(`Accesso con Google non riuscito.\n${formatAuthError(e)}`)
       }
     } finally {
       setLoading(null)
@@ -35,8 +36,9 @@ export default function LoginScreen() {
       await signInWithApple()
       router.replace('/')
     } catch (e: any) {
+      console.log('[Auth][Apple] signIn error:', e)
       if (e?.code !== 'ERR_REQUEST_CANCELED') {
-        setError('Accesso con Apple non riuscito. Riprova.')
+        setError(`Accesso con Apple non riuscito.\n${formatAuthError(e)}`)
       }
     } finally {
       setLoading(null)

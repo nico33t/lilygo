@@ -16,7 +16,9 @@ GoogleSignin.configure({ webClientId: WEB_CLIENT_ID })
 
 export async function signInWithGoogle(): Promise<void> {
   if (!ensureFirebaseApp()) throw new Error('Firebase non configurato: manca google-services.json su Android o GoogleService-Info.plist su iOS')
-  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true })
+  if (Platform.OS === 'android') {
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true })
+  }
   const { data } = await GoogleSignin.signIn()
   const credential = GoogleAuthProvider.credential(data?.idToken ?? null)
   await signInWithCredential(getAuth(), credential)
@@ -50,4 +52,10 @@ export function currentUser() {
 
 export function isAppleAvailable(): boolean {
   return Platform.OS === 'ios'
+}
+
+export function formatAuthError(e: any): string {
+  const code = typeof e?.code === 'string' ? e.code : 'unknown_error'
+  const message = typeof e?.message === 'string' ? e.message : 'Errore sconosciuto'
+  return `${code}: ${message}`
 }

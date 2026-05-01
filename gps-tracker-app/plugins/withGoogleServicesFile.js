@@ -9,6 +9,7 @@ module.exports = function withGoogleServicesFile(config) {
     'ios',
     async (config) => {
       const src = path.resolve(config.modRequest.projectRoot, 'GoogleService-Info.plist')
+      const iosRoot = config.modRequest.platformProjectRoot // ios/
 
       if (!fs.existsSync(src)) {
         console.warn(
@@ -19,14 +20,29 @@ module.exports = function withGoogleServicesFile(config) {
         return config
       }
 
-      const dest = path.join(
-        config.modRequest.platformProjectRoot,  // ios/
-        config.modRequest.projectName,           // ios/GPSTracker/
-        'GoogleService-Info.plist',
-      )
+      // Copia in tutti i target app iOS (es: ios/Trackly/GoogleService-Info.plist)
+      // Evita dipendenza da modRequest.projectName quando cambia o non è valorizzato.
+      const dirs = fs.readdirSync(iosRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .filter((name) => {
+          const full = path.join(iosRoot, name)
+          if (name === 'Pods' || name.endsWith('.xcodeproj') || name.endsWith('.xcworkspace')) return false
+          if (!fs.existsSync(path.join(full, 'Info.plist'))) return false
+          return true
+        })
 
-      fs.copyFileSync(src, dest)
-      console.log(`✅ [withGoogleServicesFile] Copiato → ${dest}`)
+      if (dirs.length === 0) {
+        console.warn('\n⚠️  [withGoogleServicesFile] Nessun target iOS trovato con Info.plist.\n')
+        return config
+      }
+
+      for (const dirName of dirs) {
+        const dest = path.join(iosRoot, dirName, 'GoogleService-Info.plist')
+        fs.copyFileSync(src, dest)
+        console.log(`✅ [withGoogleServicesFile] Copiato → ${dest}`)
+      }
+
       return config
     },
   ])
