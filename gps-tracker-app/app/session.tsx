@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
-import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from 'react-native-maps'
+import MapView, { Circle, Marker, PROVIDER_GOOGLE, Polyline } from 'react-native-maps'
 import Slider from '@react-native-community/slider'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -10,9 +10,11 @@ import type { TrackPoint } from '../types'
 import { C, S } from '../constants/design'
 
 const MAP_PROVIDER =
-  Platform.OS === 'android' && process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY
+  (Platform.OS === 'android' && process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY) ||
+  (Platform.OS === 'ios' && process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_KEY)
     ? PROVIDER_GOOGLE
     : undefined
+const POSITION_CIRCLE_RADIUS_M = 18
 
 export default function SessionScreen() {
   const { id, device } = useLocalSearchParams<{ id: string; device: string }>()
@@ -20,6 +22,7 @@ export default function SessionScreen() {
   const [points, setPoints] = useState<TrackPoint[]>([])
   const [loading, setLoading] = useState(true)
   const [scrubIndex, setScrubIndex] = useState(0)
+  const [panelHeight, setPanelHeight] = useState(0)
 
   useEffect(() => {
     getSessionPoints(id, device).then((pts) => {
@@ -48,6 +51,7 @@ export default function SessionScreen() {
           <MapView
             style={{ flex: 1 }}
             provider={MAP_PROVIDER}
+            mapPadding={{ top: 0, right: 0, bottom: panelHeight, left: 0 }}
             initialRegion={coords.length > 0 ? {
               latitude: coords[0].latitude,
               longitude: coords[0].longitude,
@@ -59,14 +63,26 @@ export default function SessionScreen() {
               <Polyline coordinates={coords} strokeColor={C.accent} strokeWidth={3} />
             )}
             {current && (
-              <Marker
-                coordinate={{ latitude: current.lat, longitude: current.lon }}
-                image={require('../assets/marker.png')}
-              />
+              <>
+                <Circle
+                  center={{ latitude: current.lat, longitude: current.lon }}
+                  radius={POSITION_CIRCLE_RADIUS_M}
+                  strokeWidth={1}
+                  strokeColor="rgba(255,56,92,0.45)"
+                  fillColor="rgba(255,56,92,0.18)"
+                />
+                <Marker
+                  coordinate={{ latitude: current.lat, longitude: current.lon }}
+                  image={require('../assets/marker.png')}
+                />
+              </>
             )}
           </MapView>
 
-          <View style={[styles.panel, { paddingBottom: insets.bottom + S.md }]}>
+          <View
+            style={[styles.panel, { paddingBottom: insets.bottom + S.md }]}
+            onLayout={(e) => setPanelHeight(e.nativeEvent.layout.height)}
+          >
             <Text style={styles.pointInfo}>
               Punto {scrubIndex + 1} / {points.length}
             </Text>

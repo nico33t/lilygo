@@ -32,6 +32,7 @@ module.exports = {
         },
       },
     ],
+    './plugins/withAppleLookAround',
     './plugins/withIOSBuildFixes',
     './plugins/withGoogleServicesFile',
     './plugins/withAndroidGoogleServicesWarning',
@@ -64,7 +65,7 @@ module.exports = {
   ],
   experiments: { typedRoutes: true, newArchEnabled: true },
   ios: {
-    icon: './assets/logo.icon',
+    icon: './assets/logo-v2.icon',
     bundleIdentifier: 'com.nicotomassini.gps-tracker',
     buildNumber: '1',
     googleServicesFile: './GoogleService-Info.plist',

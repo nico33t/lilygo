@@ -35,7 +35,7 @@ module.exports = function withIOSBuildFixes(config) {
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
         # Fix deployment target and other standard settings
-        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
         config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
         config.build_settings['DEFINES_MODULE'] = 'YES'
         config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
@@ -80,7 +80,7 @@ module.exports = function withIOSBuildFixes(config) {
     installer.aggregate_targets.each do |aggregate_target|
       aggregate_target.user_project.targets.each do |target|
         target.build_configurations.each do |config|
-          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
           config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
           config.build_settings['DEFINES_MODULE'] = 'YES'
           config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'

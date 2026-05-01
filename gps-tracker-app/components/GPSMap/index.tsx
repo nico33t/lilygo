@@ -22,7 +22,12 @@ function getLoader() {
   return loaderInstance
 }
 
-export default function GPSMap() {
+type GPSMapProps = {
+  bottomPadding?: number
+  topPadding?: number
+}
+
+export default function GPSMap(_: GPSMapProps) {
   const divRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
   const markerRef = useRef<google.maps.Marker | null>(null)

@@ -1,8 +1,10 @@
 export const C = {
   bg:        '#F2F2F7',
   card:      '#FFFFFF',
-  accent:    '#FF385C',
-  accentMid: '#FF385C22',
+  accent:    '#FF61F6',
+  accentLight: '#EFA7FF',
+  accentDark:  '#D620FF',
+  accentMid: '#FF61F622',
   text1:     '#1C1C1E',
   text2:     '#6C6C70',
   text3:     '#AEAEB2',

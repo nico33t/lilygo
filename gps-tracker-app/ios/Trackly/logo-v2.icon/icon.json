@@ -5,15 +5,22 @@
   "groups" : [
     {
       "layers" : [
+
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    },
+    {
+      "layers" : [
         {
-          "fill-specializations" : [
-            {
-              "appearance" : "dark",
-              "value" : "automatic"
-            }
-          ],
-          "image-name" : "icon.svg",
-          "name" : "icon"
+          "image-name" : "icon 2.svg",
+          "name" : "icon 2"
         }
       ],
       "shadow" : {

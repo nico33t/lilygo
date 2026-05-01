@@ -289,8 +289,8 @@ const styles = StyleSheet.create({
     borderColor: '#d1d1d6',
   },
   simBtnActive: {
-    backgroundColor: '#fff0f3',
-    borderColor: '#ff385c',
+    backgroundColor: C.accentMid,
+    borderColor: C.accent,
   },
   simBtnText: {
     fontSize: 10,

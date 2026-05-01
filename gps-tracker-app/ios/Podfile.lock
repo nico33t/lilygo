@@ -1481,6 +1481,9 @@ PODS:
     - RNScreens
   - ExpoSymbols (55.0.7):
     - ExpoModulesCore
+  - ExpoUI (55.0.13):
+    - ExpoModulesCore
+    - React-RCTFabric
   - EXStructuredHeaders (55.0.2)
   - EXUpdates (55.0.21):
     - EASClient
@@ -1570,6 +1573,11 @@ PODS:
     - leveldb-library (~> 1.22)
     - nanopb (~> 3.30910.0)
   - FirebaseSharedSwift (12.10.0)
+  - Google-Maps-iOS-Utils (6.1.0):
+    - GoogleMaps (~> 9.0)
+  - GoogleMaps (9.4.0):
+    - GoogleMaps/Maps (= 9.4.0)
+  - GoogleMaps/Maps (9.4.0)
   - GoogleSignIn (9.1.0):
     - AppAuth (~> 2.0)
     - AppCheckCore (~> 11.0)
@@ -3141,8 +3149,6 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - react-native-maps (1.27.2):
-    - react-native-maps/Maps (= 1.27.2)
   - react-native-maps/Generated (1.27.2):
     - hermes-engine
     - RCTRequired
@@ -3155,6 +3161,32 @@ PODS:
     - React-graphics
     - React-ImageManager
     - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
+  - react-native-maps/Google (1.27.2):
+    - Google-Maps-iOS-Utils (= 6.1.0)
+    - GoogleMaps (= 9.4.0)
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - react-native-maps/Generated
+    - react-native-maps/Maps
     - React-NativeModulesApple
     - React-RCTFabric
     - React-renderercss
@@ -4154,6 +4186,7 @@ DEPENDENCIES:
   - ExpoNotifications (from `../node_modules/expo-notifications/ios`)
   - ExpoRouter (from `../node_modules/expo-router/ios`)
   - ExpoSymbols (from `../node_modules/expo-symbols/ios`)
+  - "ExpoUI (from `../node_modules/@expo/ui/ios`)"
   - EXStructuredHeaders (from `../node_modules/expo-structured-headers/ios`)
   - EXUpdates (from `../node_modules/expo-updates/ios`)
   - EXUpdatesInterface (from `../node_modules/expo-updates-interface/ios`)
@@ -4197,7 +4230,7 @@ DEPENDENCIES:
   - React-Mapbuffer (from `../node_modules/react-native/ReactCommon`)
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
   - react-native-ble-plx (from `../node_modules/react-native-ble-plx`)
-  - react-native-maps (from `../node_modules/react-native-maps`)
+  - react-native-maps/Google (from `/Users/nicolatomassini/30_Progetti_Attivi/lilygo/gps-tracker-app/node_modules/react-native-maps`)
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - "react-native-skia (from `../node_modules/@shopify/react-native-skia`)"
   - "react-native-slider (from `../node_modules/@react-native-community/slider`)"
@@ -4265,6 +4298,8 @@ SPEC REPOS:
     - FirebaseFirestore
     - FirebaseFirestoreInternal
     - FirebaseSharedSwift
+    - Google-Maps-iOS-Utils
+    - GoogleMaps
     - GoogleSignIn
     - GoogleUtilities
     - "gRPC-C++"
@@ -4344,6 +4379,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-router/ios"
   ExpoSymbols:
     :path: "../node_modules/expo-symbols/ios"
+  ExpoUI:
+    :path: "../node_modules/@expo/ui/ios"
   EXStructuredHeaders:
     :path: "../node_modules/expo-structured-headers/ios"
   EXUpdates:
@@ -4430,7 +4467,7 @@ EXTERNAL SOURCES:
   react-native-ble-plx:
     :path: "../node_modules/react-native-ble-plx"
   react-native-maps:
-    :path: "../node_modules/react-native-maps"
+    :path: "/Users/nicolatomassini/30_Progetti_Attivi/lilygo/gps-tracker-app/node_modules/react-native-maps"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
   react-native-skia:
@@ -4564,6 +4601,7 @@ SPEC CHECKSUMS:
   ExpoNotifications: bfecef3258a7c8fdde4d999181adf2e530e44b73
   ExpoRouter: e2c56f80102b153c5f8c887b38094ef936c266a2
   ExpoSymbols: 8b63e859ba013df1f2fc666f535fddb3d5270569
+  ExpoUI: 8620210ed7d67c6b3b4515554e16c37b3a95b7a8
   EXStructuredHeaders: 93ad4f31a2eec124428675e28aca11de243ee1e4
   EXUpdates: ac6732d200efef590f4056c333a21f587fc383fe
   EXUpdatesInterface: 4c11f4d1594526258f14d09817dc407acbf24e3b
@@ -4579,6 +4617,8 @@ SPEC CHECKSUMS:
   FirebaseFirestore: 3c85b7fc1cbad3bcfc0ba807861aa55e0ad4af22
   FirebaseFirestoreInternal: a5120d3aea03c837ff9937c90e8a95f81e6a0706
   FirebaseSharedSwift: 3d1e448b7202e36821a492941c84592d1308ea14
+  Google-Maps-iOS-Utils: 0a484b05ed21d88c9f9ebbacb007956edd508a96
+  GoogleMaps: 0608099d4870cac8754bdba9b6953db543432438
   GoogleSignIn: fcee2257188d5eda57a5e2b6a715550ffff9206d
   GoogleUtilities: 00c88b9a86066ef77f0da2fab05f65d7768ed8e1
   "gRPC-C++": cc207623316fb041a7a3e774c252cf68a058b9e8
@@ -4687,6 +4727,6 @@ SPEC CHECKSUMS:
   SDWebImageWebPCoder: e38c0a70396191361d60c092933e22c20d5b1380
   Yoga: f6a505247d21ee720d1ea0463dbe6ac95116c644
 
-PODFILE CHECKSUM: 2f0cd6ca0f737d5be4a86b824cc4707ab83b632e
+PODFILE CHECKSUM: d3da791bf0db93ecc056042542ef2dbd97a247ef
 
 COCOAPODS: 1.16.2

@@ -1,48 +1,50 @@
 import { Ionicons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useEffect, useRef } from 'react'
+import { type ComponentType, useEffect, useRef, useState } from 'react'
 import {
   Animated,
   Dimensions,
   PanResponder,
+  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import ConnectionBadge from '../components/ConnectionBadge'
 import GPSMap from '../components/GPSMap'
-import StatusPanel from '../components/StatusPanel'
+import TrackerLegacyBottomSheet from '../components/TrackerLegacyBottomSheet'
+import TrackerSheetContent from '../components/TrackerSheetContent'
+import TrackerSwiftBottomSheet from '../components/TrackerSwiftBottomSheet'
 import { useTracker } from '../hooks/useTracker'
 import { useRemote } from '../hooks/useRemote'
-import { useTrackerStore } from '../store/tracker'
 import { onBleDisconnectedUnexpectedly, cancelDisconnectAlarm } from '../services/proximityService'
-import { C, R } from '../constants/design'
-
-const IP_RE = /^\d{1,3}(\.\d{1,3}){3}/
-const SCREEN_H   = Dimensions.get('window').height
-const SHEET_H    = SCREEN_H * 0.72   // total sheet height
-const HANDLE_H   = 32                // visible collapsed height
-const SNAP_FULL  = 0                 // translateY: fully open
-const SNAP_MID   = SHEET_H * 0.48   // translateY: mid — default
-const SNAP_MINI  = SHEET_H - HANDLE_H  // translateY: only handle visible
+import { useTrackerStore } from '../store/tracker'
+import { C } from '../constants/design'
+const SCREEN_H = Dimensions.get('window').height
+const SHEET_H = SCREEN_H * 0.72
+const HANDLE_H = 32
+const SNAP_FULL = 0
+const SNAP_MID = SHEET_H * 0.48
+const SNAP_MINI = SHEET_H - HANDLE_H
 
 const SNAPS = [SNAP_FULL, SNAP_MID, SNAP_MINI]
 
 function nearest(value: number): number {
-  return SNAPS.reduce((a, b) => Math.abs(b - value) < Math.abs(a - value) ? b : a)
+  return SNAPS.reduce((a, b) => (Math.abs(b - value) < Math.abs(a - value) ? b : a))
 }
 
 export default function TrackerScreen() {
   const { ip, id } = useLocalSearchParams<{ ip?: string; id?: string }>()
   const deviceId = id ?? ip ?? ''
-  const insets   = useSafeAreaInsets()
-  const isWifi   = IP_RE.test(deviceId)
+  const insets = useSafeAreaInsets()
+  const [headerHeight, setHeaderHeight] = useState(0)
+  const [mapBottomPadding, setMapBottomPadding] = useState(SHEET_H - SNAP_MID)
+  const [swiftSheetOpen, setSwiftSheetOpen] = useState(true)
+  const [isFollowing, setIsFollowing] = useState(true)
 
   useTracker(deviceId)
-  const status           = useTrackerStore((s) => s.status)
+  const status = useTrackerStore((s) => s.status)
   const proximityEnabled = useTrackerStore((s) => s.proximityAlarmEnabled)
   useRemote(deviceId, status === 'disconnected')
 
@@ -51,15 +53,16 @@ export default function TrackerScreen() {
     else cancelDisconnectAlarm()
   }, [status, proximityEnabled])
 
-  // ── Bottom sheet animation ────────────────────────────────────────────────
-  const pan      = useRef(new Animated.Value(SNAP_MID)).current
+  const pan = useRef(new Animated.Value(SNAP_MID)).current
   const panStart = useRef(SNAP_MID)
 
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, { dy }) => Math.abs(dy) > 4,
       onPanResponderGrant: () => {
-        pan.stopAnimation((v) => { panStart.current = v })
+        pan.stopAnimation((v) => {
+          panStart.current = v
+        })
       },
       onPanResponderMove: (_, { dy }) => {
         const next = Math.max(SNAP_FULL, Math.min(SNAP_MINI, panStart.current + dy))
@@ -70,10 +73,8 @@ export default function TrackerScreen() {
         let dest: number
 
         if (vy < -0.6) {
-          // flick up — go one level up
           dest = cur < SNAP_MID - 20 ? SNAP_FULL : SNAP_MID
         } else if (vy > 0.6) {
-          // flick down — go one level down
           dest = cur > SNAP_MID + 20 ? SNAP_MINI : SNAP_MID
         } else {
           dest = nearest(cur)
@@ -90,74 +91,143 @@ export default function TrackerScreen() {
     })
   ).current
 
-  const deviceSub = isWifi ? deviceId : deviceId.slice(0, 17)
+  const iosVersion =
+    typeof Platform.Version === 'string'
+      ? Number.parseInt(Platform.Version, 10)
+      : Platform.Version
+
+  let swiftUI: null | {
+    Host: ComponentType<any>
+    BottomSheet: ComponentType<any>
+    RNHostView: ComponentType<any>
+    Group?: ComponentType<any>
+  } = null
+  let dragIndicator: null | ((value: 'visible' | 'hidden' | 'automatic') => any) = null
+
+  if (Platform.OS === 'ios' && iosVersion >= 26) {
+    try {
+      const swiftUIModule = require('@expo/ui/swift-ui')
+      const modifiers = require('@expo/ui/swift-ui/modifiers')
+      swiftUI = {
+        Host: swiftUIModule.Host,
+        BottomSheet: swiftUIModule.BottomSheet,
+        RNHostView: swiftUIModule.RNHostView,
+        Group: swiftUIModule.Group,
+      }
+      dragIndicator = modifiers.presentationDragIndicator
+    } catch {
+      swiftUI = null
+      dragIndicator = null
+    }
+  }
+
+  const useSwiftSheet = false
+
+  useEffect(() => {
+    if (useSwiftSheet) {
+      setMapBottomPadding(360)
+      return
+    }
+
+    const listenerId = pan.addListener(({ value }) => {
+      const visibleSheetHeight = Math.max(HANDLE_H, SHEET_H - value)
+      setMapBottomPadding(visibleSheetHeight)
+    })
+
+    return () => pan.removeListener(listenerId)
+  }, [pan, useSwiftSheet])
 
   return (
     <View style={styles.root}>
+      <GPSMap 
+        bottomPadding={mapBottomPadding} 
+        topPadding={headerHeight} 
+        isFollowing={isFollowing}
+        onMapDrag={() => setIsFollowing(false)}
+      />
 
-      {/* Map — full screen background */}
-      <GPSMap />
+      {/* Floating Controls above Bottom Sheet */}
+      <Animated.View
+        style={[
+          styles.floatingControls,
+          {
+            transform: [
+              {
+                translateY: pan.interpolate({
+                  inputRange: [SNAP_FULL, SNAP_MINI],
+                  outputRange: [SNAP_FULL, SNAP_MINI],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <View style={styles.floatingRow}>
+          {/* Left: Info Rectangle */}
+          <View style={styles.statusBox}>
+            <View style={[styles.statusDot, { backgroundColor: status === 'disconnected' ? C.text3 : C.green }]} />
+            <Text style={styles.statusBoxText}>
+              {status === 'disconnected' ? 'Offline' : 'Online'}
+            </Text>
+          </View>
 
-      {/* Header overlay */}
-      <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
+          <View style={{ flex: 1 }} />
+
+          {/* Right: Recenter Button (only if not following) */}
+          {!isFollowing && (
+            <Pressable
+              style={styles.recenterBtn}
+              onPress={() => setIsFollowing(true)}
+            >
+              <Ionicons name="locate" size={20} color={C.accent} />
+              <Text style={styles.recenterText}>Ricentra</Text>
+            </Pressable>
+          )}
+        </View>
+      </Animated.View>
+
+      <View
+        style={[styles.header, { paddingTop: insets.top + 4 }]}
+        onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+      >
         <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={10}>
           <Ionicons name="arrow-back" size={20} color={C.text1} />
         </Pressable>
-
-        <View style={styles.titleBlock}>
-          <Text style={styles.deviceName} numberOfLines={1}>GPS Tracker</Text>
-          <Text style={styles.deviceSub} numberOfLines={1}>{deviceSub}</Text>
-        </View>
-
-        <ConnectionBadge />
-
-        <Pressable
-          onPress={() => router.push(`/history?id=${encodeURIComponent(deviceId)}`)}
-          style={styles.iconBtn}
-          hitSlop={10}
-        >
-          <Ionicons name="time-outline" size={20} color={C.text1} />
-        </Pressable>
+        <View style={styles.spacer} />
         <Pressable
           onPress={() => router.push(`/settings?id=${encodeURIComponent(deviceId)}`)}
           style={styles.iconBtn}
           hitSlop={10}
         >
-          <Ionicons name="settings-outline" size={20} color={C.text1} />
+          <Ionicons name="ellipsis-vertical" size={20} color={C.text1} />
         </Pressable>
       </View>
 
-      {/* Bottom sheet */}
-      <Animated.View
-        style={[
-          styles.sheet,
-          { height: SHEET_H, transform: [{ translateY: pan }] },
-        ]}
-      >
-        {/* Drag handle */}
-        <View style={styles.handleArea} {...panResponder.panHandlers}>
-          <View style={styles.handleBar} />
-        </View>
-
-        {/* Scrollable data */}
-        <ScrollView
-          style={styles.sheetScroll}
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
+      {useSwiftSheet && swiftUI ? (
+        <TrackerSwiftBottomSheet
+          swiftUI={swiftUI}
+          dragIndicator={dragIndicator}
+          isPresented={swiftSheetOpen}
+          onIsPresentedChange={setSwiftSheetOpen}
         >
-          <StatusPanel />
-        </ScrollView>
-      </Animated.View>
-
+          <TrackerSheetContent variant="swift" />
+        </TrackerSwiftBottomSheet>
+      ) : (
+        <TrackerLegacyBottomSheet
+          sheetHeight={SHEET_H}
+          pan={pan}
+          panResponder={panResponder}
+          scrollBottomPadding={insets.bottom + 16}
+        >
+          <TrackerSheetContent variant="legacy" />
+        </TrackerLegacyBottomSheet>
+      )}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-
-  // Header — floating over the map
   header: {
     position: 'absolute',
     top: 0,
@@ -168,9 +238,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 10,
     gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: 'transparent',
     zIndex: 10,
   },
   iconBtn: {
@@ -179,41 +247,67 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  titleBlock: { flex: 1 },
-  deviceName: { fontSize: 15, fontWeight: '700', color: C.text1, letterSpacing: -0.2 },
-  deviceSub:  { fontSize: 11, color: C.text3, fontVariant: ['tabular-nums'] },
-
-  // Bottom sheet
-  sheet: {
+  spacer: { flex: 1 },
+  floatingControls: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
-    backgroundColor: C.card,
-    borderTopLeftRadius: R.xl,
-    borderTopRightRadius: R.xl,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: -4 },
-    elevation: 12,
-    zIndex: 10,
+    bottom: SHEET_H + 16,
+    paddingHorizontal: 16,
+    zIndex: 5,
   },
-
-  handleArea: {
+  floatingRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    height: 32,
-    borderTopLeftRadius: R.xl,
-    borderTopRightRadius: R.xl,
   },
-  handleBar: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(0,0,0,0.15)',
+  statusBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
-
-  sheetScroll: { flex: 1 },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusBoxText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.text1,
+  },
+  recenterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 14,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  recenterText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.accent,
+  },
 })

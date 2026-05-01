@@ -18,26 +18,23 @@ function normalizeSource(src) {
     .replace(/^\s*#import\s+<RNFBApp\/RNFBAppModule\.h>\s*\n?/gm, '')
 }
 
-function ensureImportAfterLastImport(src, importLine) {
-  const lines = src.split('\n')
-  let insertAt = -1
-  for (let i = 0; i < lines.length; i += 1) {
-    if (lines[i].trim().startsWith('#import ')) {
-      insertAt = i
-      continue
-    }
-    if (insertAt >= 0 && lines[i].trim() !== '') break
+function insertAtTop(src, importLine) {
+  // Find the end of the license comment if it exists
+  const commentEnd = src.indexOf('*/')
+  if (commentEnd !== -1) {
+    const insertPos = commentEnd + 2
+    return src.slice(0, insertPos) + '\n' + importLine + src.slice(insertPos)
   }
-
-  if (insertAt < 0) return `${importLine}\n${src}`
-
-  lines.splice(insertAt + 1, 0, importLine)
-  return lines.join('\n')
+  return importLine + '\n' + src
 }
 
 function ensureReactBridgeImports(src) {
-  let next = ensureImportAfterLastImport(src, '#import <React/RCTDefines.h>')
-  next = ensureImportAfterLastImport(next, '#import <React/RCTBridgeModule.h>')
+  let next = src
+  // Insert in reverse order so they appear as:
+  // #import <React/RCTDefines.h>
+  // #import <React/RCTBridgeModule.h>
+  next = insertAtTop(next, '#import <React/RCTBridgeModule.h>')
+  next = insertAtTop(next, '#import <React/RCTDefines.h>')
   return next
 }
 
@@ -80,7 +77,7 @@ module.exports = function withRNFBFirestoreHeaderFix(config) {
         if (!fs.existsSync(file)) continue
         const original = fs.readFileSync(file, 'utf8')
         let next = normalizeSource(original)
-        next = ensureImportAfterLastImport(next, '#import <RNFBApp/RNFBAppModule.h>')
+        next = insertAtTop(next, '#import <RNFBApp/RNFBAppModule.h>')
         next = ensureReactBridgeImports(next)
         if (next !== original) {
           fs.writeFileSync(file, next, 'utf8')
