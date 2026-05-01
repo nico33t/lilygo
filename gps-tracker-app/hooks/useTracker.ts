@@ -1,11 +1,12 @@
 import { useEffect } from 'react'
-import auth from '@react-native-firebase/auth'
+import { getAuth } from '@react-native-firebase/auth'
 import { bleConnect, bleDisconnect } from '../services/bleService'
 import { connect as wsConnect, disconnect as wsDisconnect } from '../services/wsService'
 import { getBackend } from '../services/backendService'
 import { touchLastSeen } from '../services/deviceService'
 import { useTrackerStore } from '../store/tracker'
 import type { LiveData } from '../services/backendService'
+import { ensureFirebaseApp } from '../services/firebaseApp'
 
 const IP_RE = /^\d{1,3}(\.\d{1,3}){3}/
 
@@ -28,7 +29,7 @@ export function useTracker(deviceId: string) {
   // Fallback RTDB: attivo solo quando BLE è disconnesso e utente è loggato
   useEffect(() => {
     if (isWifi || status !== 'disconnected') return
-    if (!auth().currentUser) return
+    if (!ensureFirebaseApp() || !getAuth().currentUser) return
 
     let cancelled = false
     let unsub: (() => void) | null = null

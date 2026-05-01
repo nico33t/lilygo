@@ -6,13 +6,14 @@ import {
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import { router } from 'expo-router'
-import auth from '@react-native-firebase/auth'
+import { getAuth, onAuthStateChanged } from '@react-native-firebase/auth'
 import { bleSendCommand } from '../services/bleService'
 import { sendCommand as wsSendCommand } from '../services/wsService'
 import { useTrackerStore } from '../store/tracker'
 import { signOut } from '../services/authService'
 import { listUserDevices, getTrialStatus, claimDevice, DeviceInfo } from '../services/deviceService'
 import { C, R, S } from '../constants/design'
+import { ensureFirebaseApp } from '../services/firebaseApp'
 
 const IP_RE = /^\d{1,3}(\.\d{1,3}){3}$/
 
@@ -79,7 +80,12 @@ export default function SettingsPanel() {
   const [claimDone, setClaimDone]   = useState(false)
 
   useEffect(() => {
-    const unsub = auth().onAuthStateChanged(async (user) => {
+    if (!ensureFirebaseApp()) {
+      setUserEmail(null)
+      setDeviceInfo(null)
+      return
+    }
+    const unsub = onAuthStateChanged(getAuth(), async (user) => {
       setUserEmail(user?.email ?? null)
       if (user && deviceId) {
         try {

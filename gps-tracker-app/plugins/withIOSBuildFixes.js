@@ -15,12 +15,33 @@ module.exports = function withIOSBuildFixes(config) {
 
       let content = fs.readFileSync(podfilePath, 'utf8')
 
-      // Avoid duplicate injection
-      if (content.includes('withIOSBuildFixes')) return config
-
       const buildFixesBlock = `
     # --- [withIOSBuildFixes] START ---
-    # Fix for both Pod targets and the Main App target
+    require 'fileutils'
+
+    # Fix gRPC modulemap missing paths used by gRPC-C++ when Firebase/Firestore is enabled.
+    # We create both a real file copy and a symlink so both absolute and relative include paths work.
+    grpc_fixes = [
+      {
+        source: "#{installer.sandbox.root}/Target Support Files/gRPC-Core/gRPC-Core.modulemap",
+        dest_dir: "#{installer.sandbox.root}/Headers/Private/grpc",
+        dest_file: "gRPC-Core.modulemap"
+      },
+      {
+        source: "#{installer.sandbox.root}/Target Support Files/gRPC-C++/gRPC-C++.modulemap",
+        dest_dir: "#{installer.sandbox.root}/Headers/Private/grpcpp",
+        dest_file: "gRPC-C++.modulemap"
+      }
+    ]
+
+    grpc_fixes.each do |fix|
+      next unless File.exist?(fix[:source])
+      FileUtils.mkdir_p(fix[:dest_dir])
+      dest_path = "#{fix[:dest_dir]}/#{fix[:dest_file]}"
+      FileUtils.rm_f(dest_path) if File.exist?(dest_path) || File.symlink?(dest_path)
+      FileUtils.ln_sf(fix[:source], dest_path)
+    end
+
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
@@ -56,9 +77,15 @@ module.exports = function withIOSBuildFixes(config) {
     # --- [withIOSBuildFixes] END ---
 `
 
-      // Insert at the beginning of the post_install block
+      // Replace previously injected block if present, otherwise insert it.
+      const markerRegex = /[ \t]*# --- \[withIOSBuildFixes\] START ---[\s\S]*?# --- \[withIOSBuildFixes\] END ---\n?/m
+      if (markerRegex.test(content)) {
+        content = content.replace(markerRegex, buildFixesBlock)
+      }
+
+      // Ensure block exists at the beginning of post_install.
       const searchPattern = /post_install do \|installer\|/
-      if (searchPattern.test(content)) {
+      if (searchPattern.test(content) && !content.includes('# --- [withIOSBuildFixes] START ---')) {
         content = content.replace(searchPattern, `post_install do |installer|${buildFixesBlock}`)
       }
 

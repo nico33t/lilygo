@@ -12,12 +12,12 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { Device } from 'react-native-ble-plx'
-import auth from '@react-native-firebase/auth'
 import { bleManager, BleState } from '../services/bleService'
 import { getLastDevice } from '../services/bleCache'
 import { BLE_DEVICE_NAME, APP_VERSION } from '../constants/tracker'
 import { DiscoveredDevice, scanSubnet } from '../services/discovery'
 import { listUserDevices, getTrialStatus, DeviceInfo } from '../services/deviceService'
+import { useAuth } from '../hooks/useAuth'
 import DeviceCard from '../components/DeviceCard'
 import { C, R, S } from '../constants/design'
 
@@ -69,19 +69,18 @@ export default function DiscoveryScreen() {
   const bleScanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [cloudDevices, setCloudDevices] = useState<DeviceInfo[]>([])
+  const user = useAuth()
 
   useEffect(() => { getLastDevice().then(setLastDevice).catch(() => {}) }, [])
 
   useEffect(() => {
-    const unsub = auth().onAuthStateChanged(async (user) => {
-      if (user) {
-        try { setCloudDevices(await listUserDevices()) } catch {}
-      } else {
-        setCloudDevices([])
-      }
-    })
-    return unsub
-  }, [])
+    if (user === undefined) return
+    if (!user) {
+      setCloudDevices([])
+      return
+    }
+    listUserDevices().then(setCloudDevices).catch(() => setCloudDevices([]))
+  }, [user])
 
   useEffect(() => {
     if (!bleManager) return
@@ -257,13 +256,13 @@ export default function DiscoveryScreen() {
         <Text style={st.title}>Dispositivi</Text>
         <Pressable
           style={({ pressed }) => [st.iconBtn, pressed && { opacity: 0.6 }]}
-          onPress={() => auth().currentUser ? router.push('/settings') : router.push('/login')}
+          onPress={() => user ? router.push('/settings') : router.push('/login')}
           hitSlop={10}
         >
           <Ionicons
-            name={auth().currentUser ? 'person-circle' : 'person-circle-outline'}
+            name={user ? 'person-circle' : 'person-circle-outline'}
             size={22}
-            color={auth().currentUser ? C.accent : C.text2}
+            color={user ? C.accent : C.text2}
           />
         </Pressable>
         <Pressable

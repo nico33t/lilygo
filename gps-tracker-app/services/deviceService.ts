@@ -1,5 +1,6 @@
 import firestore from '@react-native-firebase/firestore'
-import auth from '@react-native-firebase/auth'
+import { getAuth } from '@react-native-firebase/auth'
+import { ensureFirebaseApp } from './firebaseApp'
 
 export interface DeviceInfo {
   id: string
@@ -19,7 +20,8 @@ const TRIAL_DAYS    = 14
 const MS_PER_DAY    = 86_400_000
 
 export async function claimDevice(deviceId: string, name: string): Promise<void> {
-  const uid = auth().currentUser?.uid
+  if (!ensureFirebaseApp()) throw new Error('Firebase non configurato')
+  const uid = getAuth().currentUser?.uid
   if (!uid) throw new Error('Not authenticated')
 
   const existing = await firestore().collection('devices').doc(deviceId).get()
@@ -44,14 +46,16 @@ export async function claimDevice(deviceId: string, name: string): Promise<void>
 }
 
 export async function isDeviceClaimed(deviceId: string): Promise<{ claimed: boolean; isOwner: boolean }> {
+  if (!ensureFirebaseApp()) return { claimed: false, isOwner: false }
   const doc = await firestore().collection('devices').doc(deviceId).get()
   if (!doc.exists) return { claimed: false, isOwner: false }
-  const uid = auth().currentUser?.uid
+  const uid = getAuth().currentUser?.uid
   return { claimed: true, isOwner: doc.data()!.ownerId === uid }
 }
 
 export async function listUserDevices(): Promise<DeviceInfo[]> {
-  const uid = auth().currentUser?.uid
+  if (!ensureFirebaseApp()) return []
+  const uid = getAuth().currentUser?.uid
   if (!uid) return []
   const snap = await firestore()
     .collection('devices')
@@ -76,7 +80,8 @@ export function getTrialStatus(device: DeviceInfo): {
 }
 
 export async function updateDeviceName(deviceId: string, name: string): Promise<void> {
-  const uid = auth().currentUser?.uid
+  if (!ensureFirebaseApp()) throw new Error('Firebase non configurato')
+  const uid = getAuth().currentUser?.uid
   if (!uid) throw new Error('Not authenticated')
   await firestore().collection('devices').doc(deviceId).update({ name })
 }

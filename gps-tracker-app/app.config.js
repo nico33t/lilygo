@@ -1,6 +1,12 @@
+const fs = require('fs')
+const path = require('path')
+
 const IS_DEV = process.env.APP_VARIANT === 'development'
 const EAS_PROJECT_ID = '29a33dca-0355-455a-aa1a-cf38ba295f27'
 const REVERSED_CLIENT_ID = process.env.REVERSED_CLIENT_ID ?? 'com.googleusercontent.apps.REPLACE_ME'
+const HAS_ANDROID_GOOGLE_SERVICES = fs.existsSync(
+  path.join(__dirname, 'google-services.json')
+)
 
 /** @type {import('expo/config').ExpoConfig} */
 module.exports = {
@@ -21,6 +27,7 @@ module.exports = {
     './plugins/withModularHeaders',
     './plugins/withIOSBuildFixes',
     './plugins/withGoogleServicesFile',
+    './plugins/withAndroidGoogleServicesWarning',
     'expo-router',
     'expo-updates',
     [
@@ -52,12 +59,12 @@ module.exports = {
     icon: './assets/logo.icon',
     bundleIdentifier: 'com.nicotomassini.gps-tracker',
     buildNumber: '1',
+    googleServicesFile: './GoogleService-Info.plist',
     infoPlist: {
       NSLocationWhenInUseUsageDescription:
         'Trackly shows your position on the map.',
       NSLocationAlwaysUsageDescription:
         'Trackly needs location to track your route.',
-      CFBundleURLTypes: [{ CFBundleURLSchemes: [REVERSED_CLIENT_ID] }],
     },
     /* entitlements: {
       'aps-environment': 'production',
@@ -66,6 +73,7 @@ module.exports = {
   },
   android: {
     package: 'com.nicotomassini.gpstracker',
+    ...(HAS_ANDROID_GOOGLE_SERVICES ? { googleServicesFile: './google-services.json' } : {}),
     permissions: [
       'android.permission.ACCESS_FINE_LOCATION',
       'android.permission.ACCESS_COARSE_LOCATION',
