@@ -5,6 +5,7 @@ import type {
   ClusterOptions,
   ClusterPointInput,
 } from '../types/clustering'
+import { PROVIDER_GOOGLE } from 'react-native-maps'
 
 type NativeMapClusteringModule = {
   buildClusters: (
@@ -18,11 +19,50 @@ type NativeMapClusteringModule = {
 }
 
 const nativeModule = NativeModules.NativeMapClusteringModule as NativeMapClusteringModule | undefined
+const CLUSTERING_ENV = process.env.EXPO_PUBLIC_CLUSTERING_ENABLED
+
+export function isClusteringFeatureEnabled(): boolean {
+  // Enabled by default unless explicitly set to false/0/off.
+  if (!CLUSTERING_ENV) return true
+  const normalized = CLUSTERING_ENV.trim().toLowerCase()
+  return normalized !== 'false' && normalized !== '0' && normalized !== 'off'
+}
 
 export function isNativeClusteringAvailable(): boolean {
-  return Platform.OS === 'ios' || Platform.OS === 'android'
+  return isClusteringFeatureEnabled() &&
+    (Platform.OS === 'ios' || Platform.OS === 'android')
     ? Boolean(nativeModule?.buildClusters)
     : false
+}
+
+export function getClusterProviderTuning(provider?: string): Required<ClusterOptions> {
+  const isGoogle = provider === PROVIDER_GOOGLE
+  const isIOS = Platform.OS === 'ios'
+  if (isIOS && !isGoogle) {
+    return {
+      datasetId: 'apple-default',
+      radius: 48,
+      minPoints: 3,
+      minZoom: 0,
+      maxZoom: 20,
+    }
+  }
+  if (isIOS && isGoogle) {
+    return {
+      datasetId: 'google-ios',
+      radius: 58,
+      minPoints: 3,
+      minZoom: 0,
+      maxZoom: 20,
+    }
+  }
+  return {
+    datasetId: 'google-android',
+    radius: 62,
+    minPoints: 4,
+    minZoom: 0,
+    maxZoom: 20,
+  }
 }
 
 export async function buildNativeClusters(
@@ -56,4 +96,3 @@ export async function getClusterExpansionZoom(clusterId: string): Promise<number
   if (!nativeModule?.getExpansionZoom) return 18
   return nativeModule.getExpansionZoom(clusterId)
 }
-

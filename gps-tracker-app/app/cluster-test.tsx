@@ -1,11 +1,17 @@
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { C, S } from '../constants/design'
-import { buildNativeClusters, isNativeClusteringAvailable } from '../services/nativeClustering'
+import {
+  buildNativeClusters,
+  getClusterExpansionZoom,
+  getClusterLeaves,
+  getClusterProviderTuning,
+  isNativeClusteringAvailable,
+} from '../services/nativeClustering'
 import type { ClusterFeature } from '../types/clustering'
 
 const MAP_PROVIDER =
@@ -18,20 +24,31 @@ const CENTER = { latitude: 45.4642, longitude: 9.19 } // Milano
 
 export default function ClusterTestScreen() {
   const insets = useSafeAreaInsets()
+  const mapRef = useRef<MapView | null>(null)
   const [region, setRegion] = useState<Region>({
     latitude: CENTER.latitude,
     longitude: CENTER.longitude,
     latitudeDelta: 0.09,
     longitudeDelta: 0.09,
   })
+  const [size, setSize] = useState<50 | 500 | 5000>(50)
   const [clusters, setClusters] = useState<ClusterFeature[]>([])
+  const [bench, setBench] = useState<{ ms: number; points: number; clusters: number }>({
+    ms: 0,
+    points: 0,
+    clusters: 0,
+  })
+  const [leavesModalVisible, setLeavesModalVisible] = useState(false)
+  const [leavesCount, setLeavesCount] = useState(0)
   const runIdRef = useRef(0)
+  const clusterTuning = useMemo(() => getClusterProviderTuning(MAP_PROVIDER), [])
 
   const markers = useMemo(() => {
     const out: Array<{ id: string; latitude: number; longitude: number; heading: number }> = []
-    for (let i = 0; i < 50; i += 1) {
-      const latJitter = (Math.random() - 0.5) * 0.06
-      const lonJitter = (Math.random() - 0.5) * 0.06
+    const spread = size === 50 ? 0.03 : size === 500 ? 0.08 : 0.2
+    for (let i = 0; i < size; i += 1) {
+      const latJitter = (Math.random() - 0.5) * spread
+      const lonJitter = (Math.random() - 0.5) * spread
       out.push({
         id: `mk_${i}`,
         latitude: CENTER.latitude + latJitter,
@@ -40,7 +57,7 @@ export default function ClusterTestScreen() {
       })
     }
     return out
-  }, [])
+  }, [size])
 
   const inputPoints = useMemo(
     () => markers.map((m) => ({ id: m.id, latitude: m.latitude, longitude: m.longitude })),
@@ -68,16 +85,49 @@ export default function ClusterTestScreen() {
       east: region.longitude + region.longitudeDelta / 2,
       west: region.longitude - region.longitudeDelta / 2,
     }
-    buildNativeClusters(inputPoints, zoom, bounds, { radius: 56, minPoints: 3, maxZoom: 18 })
+    const startedAt = global.performance?.now?.() ?? Date.now()
+    buildNativeClusters(inputPoints, zoom, bounds, {
+      ...clusterTuning,
+      datasetId: `cluster_test_${size}`,
+    })
       .then((res) => {
         if (runId !== runIdRef.current) return
         setClusters(res)
+        const finishedAt = global.performance?.now?.() ?? Date.now()
+        const clusterCount = res.filter((r) => r.type === 'cluster' && r.count > 1).length
+        setBench({
+          ms: Math.max(0, finishedAt - startedAt),
+          points: inputPoints.length,
+          clusters: clusterCount,
+        })
       })
       .catch(() => {
         if (runId !== runIdRef.current) return
         setClusters([])
       })
-  }, [inputPoints, region])
+  }, [clusterTuning, inputPoints, region, size])
+
+  const onClusterPress = async (feature: ClusterFeature) => {
+    if (feature.type !== 'cluster' || feature.count <= 1 || !mapRef.current) return
+    try {
+      const expansionZoom = await getClusterExpansionZoom(feature.id)
+      const nextDelta = Math.max(0.0008, 360 / Math.pow(2, Math.max(1, expansionZoom)))
+      mapRef.current.animateToRegion(
+        {
+          latitude: feature.latitude,
+          longitude: feature.longitude,
+          latitudeDelta: nextDelta,
+          longitudeDelta: nextDelta,
+        },
+        320
+      )
+      const leaves = await getClusterLeaves(feature.id, 50, 0)
+      setLeavesCount(leaves.length)
+      setLeavesModalVisible(true)
+    } catch {
+      // ignore tap errors in demo mode
+    }
+  }
 
   return (
     <SafeAreaView style={styles.root}>
@@ -85,11 +135,28 @@ export default function ClusterTestScreen() {
         <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={8}>
           <Ionicons name="arrow-back" size={20} color={C.text1} />
         </Pressable>
-        <Text style={styles.title}>Cluster Test (50)</Text>
+        <Text style={styles.title}>Cluster Test ({size})</Text>
+        <View style={styles.controlsRow}>
+          {[50, 500, 5000].map((n) => (
+            <Pressable
+              key={n}
+              onPress={() => setSize(n as 50 | 500 | 5000)}
+              style={[styles.sizeBtn, size === n && styles.sizeBtnActive]}
+            >
+              <Text style={[styles.sizeBtnText, size === n && styles.sizeBtnTextActive]}>{n}</Text>
+            </Pressable>
+          ))}
+        </View>
         <View style={styles.headerRightSpacer} />
+      </View>
+      <View style={styles.benchBar}>
+        <Text style={styles.benchText}>
+          build: {bench.ms.toFixed(1)} ms | points: {bench.points} | clusters: {bench.clusters}
+        </Text>
       </View>
 
       <MapView
+        ref={mapRef}
         style={styles.map}
         provider={MAP_PROVIDER}
         initialRegion={{
@@ -108,6 +175,7 @@ export default function ClusterTestScreen() {
                 key={f.id}
                 coordinate={{ latitude: f.latitude, longitude: f.longitude }}
                 tracksViewChanges={false}
+                onPress={() => onClusterPress(f)}
               >
                 <View style={styles.clusterBubble}>
                   <Text style={styles.clusterText}>{f.count}</Text>
@@ -129,6 +197,23 @@ export default function ClusterTestScreen() {
           )
         })}
       </MapView>
+
+      <Modal
+        visible={leavesModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLeavesModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Cluster leaves</Text>
+            <Text style={styles.modalText}>Primi leaves caricati: {leavesCount}</Text>
+            <Pressable onPress={() => setLeavesModalVisible(false)} style={styles.modalCloseBtn}>
+              <Text style={styles.modalCloseBtnText}>Chiudi</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -159,10 +244,47 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
   },
+  controlsRow: {
+    position: 'absolute',
+    right: 56,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  sizeBtn: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.sep,
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  sizeBtnActive: {
+    backgroundColor: C.text1,
+  },
+  sizeBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: C.text1,
+  },
+  sizeBtnTextActive: {
+    color: '#fff',
+  },
   title: {
     fontSize: 16,
     fontWeight: '700',
     color: C.text1,
+  },
+  benchBar: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: C.sep,
+    paddingHorizontal: S.md,
+    paddingVertical: 6,
+    backgroundColor: '#fff',
+  },
+  benchText: {
+    fontSize: 12,
+    color: C.text2,
+    fontWeight: '600',
   },
   map: {
     flex: 1,
@@ -182,5 +304,41 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '700',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.36)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: S.md,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    gap: 8,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.text1,
+  },
+  modalText: {
+    fontSize: 13,
+    color: C.text2,
+  },
+  modalCloseBtn: {
+    alignSelf: 'flex-end',
+    backgroundColor: C.text1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  modalCloseBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 12,
   },
 })

@@ -14,3 +14,4 @@ class NativeMapClusteringPackage : ReactPackage {
     return emptyList()
   }
 }
+

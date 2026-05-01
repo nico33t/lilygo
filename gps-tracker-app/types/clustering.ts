@@ -13,9 +13,11 @@ export type ClusterBounds = {
 }
 
 export type ClusterOptions = {
+  datasetId?: string
   radius?: number
   minPoints?: number
   maxZoom?: number
+  minZoom?: number
 }
 
 export type ClusterFeature = {
@@ -25,4 +27,3 @@ export type ClusterFeature = {
   latitude: number
   longitude: number
 }
-

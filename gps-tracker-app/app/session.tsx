@@ -8,7 +8,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getSessionPoints } from '../services/historyService'
 import type { TrackPoint } from '../types'
 import { C, S } from '../constants/design'
-import { buildNativeClusters, isNativeClusteringAvailable } from '../services/nativeClustering'
+import {
+  buildNativeClusters,
+  getClusterProviderTuning,
+  isNativeClusteringAvailable,
+} from '../services/nativeClustering'
 import type { ClusterFeature } from '../types/clustering'
 
 const MAP_PROVIDER =
@@ -32,6 +36,7 @@ export default function SessionScreen() {
   const [region, setRegion] = useState<Region | null>(null)
   const [clusters, setClusters] = useState<ClusterFeature[]>([])
   const clusterRunId = useRef(0)
+  const clusterTuning = useMemo(() => getClusterProviderTuning(MAP_PROVIDER), [])
 
   useEffect(() => {
     getSessionPoints(id, device).then((pts) => {
@@ -66,9 +71,10 @@ export default function SessionScreen() {
     }
 
     buildNativeClusters(clusterInput, zoom, bounds, {
-      radius: CLUSTER_RADIUS,
-      minPoints: CLUSTER_MIN_POINTS,
-      maxZoom: CLUSTER_MAX_ZOOM,
+      ...clusterTuning,
+      radius: clusterTuning.radius ?? CLUSTER_RADIUS,
+      minPoints: clusterTuning.minPoints ?? CLUSTER_MIN_POINTS,
+      maxZoom: clusterTuning.maxZoom ?? CLUSTER_MAX_ZOOM,
     })
       .then((result) => {
         if (clusterRunId.current !== runId) return
@@ -78,7 +84,7 @@ export default function SessionScreen() {
         if (clusterRunId.current !== runId) return
         setClusters([])
       })
-  }, [canCluster, clusterInput, region])
+  }, [canCluster, clusterInput, region, clusterTuning])
 
   return (
     <View style={{ flex: 1, backgroundColor: C.card }}>

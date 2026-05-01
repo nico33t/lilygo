@@ -16,3 +16,4 @@ RCT_EXTERN_METHOD(getExpansionZoom:(NSString *)clusterId
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 @end
+
