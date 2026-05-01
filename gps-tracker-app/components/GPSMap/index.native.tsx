@@ -14,6 +14,11 @@ const STILL_SPEED_KMH = 1
 const SHOW_DELAY_MS   = 1000
 const LABEL_UPDATE_MS = 30_000
 const MAP_SETTLE_MS   = 250   // delay after onRegionChangeComplete before re-showing
+const HAS_GOOGLE_MAPS_KEY =
+  Platform.OS === 'ios'
+    ? Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_KEY)
+    : Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY)
+const MAP_PROVIDER = HAS_GOOGLE_MAPS_KEY ? PROVIDER_GOOGLE : undefined
 
 function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000)
@@ -55,10 +60,18 @@ export default function GPSMap() {
   const [markerPx, setMarkerPx]       = useState<{ x: number; y: number } | null>(null)
   const [showCallout, setShowCallout]  = useState(false)
   const [labelText, setLabelText]      = useState('')
+  const [mapReady, setMapReady]        = useState(false)
 
   const calloutAnim = useRef(new Animated.Value(0)).current
 
-  const hasPosition = (valid || stored) && lat != null && lat !== 0
+  const hasCoords =
+    typeof lat === 'number' &&
+    typeof lon === 'number' &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    lat !== 0 &&
+    lon !== 0
+  const hasPosition = Boolean((valid || stored) && hasCoords)
 
   // ── Animate callout in / out ──────────────────────────────────────────────
   useEffect(() => {
@@ -72,7 +85,7 @@ export default function GPSMap() {
 
   // ── pointForCoordinate — correct for any bearing/tilt ────────────────────
   const updatePosition = useCallback(async () => {
-    if (!mapRef.current || !latRef.current || !lonRef.current) return
+    if (!mapRef.current || latRef.current == null || lonRef.current == null) return
     try {
       const pt = await mapRef.current.pointForCoordinate({
         latitude:  latRef.current,
@@ -84,13 +97,13 @@ export default function GPSMap() {
 
   // ── Auto-center on first fix ──────────────────────────────────────────────
   useEffect(() => {
-    if (!hasPosition || centeredRef.current || !mapRef.current || !lat || !lon) return
+    if (!hasPosition || centeredRef.current || !mapReady || !mapRef.current || lat == null || lon == null) return
     centeredRef.current = true
     mapRef.current.animateToRegion(
       { latitude: lat, longitude: lon, latitudeDelta: 0.008, longitudeDelta: 0.008 },
       600,
     )
-  }, [hasPosition, lat, lon])
+  }, [hasPosition, lat, lon, mapReady])
 
   // ── Detect stationary device ──────────────────────────────────────────────
   useEffect(() => {
@@ -172,7 +185,11 @@ export default function GPSMap() {
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         initialRegion={DEFAULT_REGION}
-        provider={PROVIDER_GOOGLE}
+        provider={MAP_PROVIDER}
+        onMapReady={() => {
+          setMapReady(true)
+          updatePosition()
+        }}
         onRegionChange={handleRegionChange}
         onRegionChangeComplete={handleRegionChangeComplete}
       >

@@ -9,6 +9,12 @@ import { getSessionPoints } from '../services/historyService'
 import type { TrackPoint } from '../types'
 import { C, S } from '../constants/design'
 
+const HAS_GOOGLE_MAPS_KEY =
+  Platform.OS === 'ios'
+    ? Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_KEY)
+    : Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY)
+const MAP_PROVIDER = HAS_GOOGLE_MAPS_KEY ? PROVIDER_GOOGLE : undefined
+
 export default function SessionScreen() {
   const { id, device } = useLocalSearchParams<{ id: string; device: string }>()
   const insets = useSafeAreaInsets()
@@ -42,7 +48,7 @@ export default function SessionScreen() {
         <>
           <MapView
             style={{ flex: 1 }}
-            provider={Platform.OS === 'ios' ? PROVIDER_GOOGLE : PROVIDER_GOOGLE}
+            provider={MAP_PROVIDER}
             initialRegion={coords.length > 0 ? {
               latitude: coords[0].latitude,
               longitude: coords[0].longitude,
