@@ -1,4 +1,4 @@
 <resources>
-  <string name="app_name">GPS Tracker</string>
+  <string name="app_name">Trackly</string>
   <string name="expo_runtime_version">0.0.2</string>
 </resources>

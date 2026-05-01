@@ -49,9 +49,8 @@ module.exports = {
   ],
   experiments: { typedRoutes: true, newArchEnabled: true },
   ios: {
-    bundleIdentifier: IS_DEV
-      ? 'com.nicotomassini.gps-tracker.dev'
-      : 'com.nicotomassini.gps-tracker',
+    icon: './assets/logo.icon',
+    bundleIdentifier: 'com.nicotomassini.gps-tracker',
     buildNumber: '1',
     infoPlist: {
       NSLocationWhenInUseUsageDescription:
@@ -61,14 +60,12 @@ module.exports = {
       CFBundleURLTypes: [{ CFBundleURLSchemes: [REVERSED_CLIENT_ID] }],
     },
     entitlements: {
-      'aps-environment': IS_DEV ? 'development' : 'production',
+      'aps-environment': 'production',
       'com.apple.developer.applesignin': ['Default'],
     },
   },
   android: {
-    package: IS_DEV
-      ? 'com.nicotomassini.gpstracker.dev'
-      : 'com.nicotomassini.gpstracker',
+    package: 'com.nicotomassini.gpstracker',
     permissions: [
       'android.permission.ACCESS_FINE_LOCATION',
       'android.permission.ACCESS_COARSE_LOCATION',
