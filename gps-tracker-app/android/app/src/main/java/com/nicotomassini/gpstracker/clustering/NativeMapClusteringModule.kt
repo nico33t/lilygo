@@ -4,7 +4,6 @@ import com.facebook.react.bridge.*
 import java.util.concurrent.Executors
 import kotlin.math.floor
 import kotlin.math.pow
-import kotlin.math.roundToInt
 
 private data class ClusterEntity(
   val id: String,
@@ -55,7 +54,8 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
         val maxZoom = if (options?.hasKey("maxZoom") == true) options.getInt("maxZoom") else 18
         val minZoom = if (options?.hasKey("minZoom") == true) options.getInt("minZoom") else 0
         val z = zoom.toInt().coerceIn(minZoom, maxZoom)
-        val bbox = normalizedBounds(bounds)
+        @Suppress("UNUSED_VARIABLE")
+        val _bounds = bounds
         val cacheKey = "${datasetId}|${points.size()}|$radius|$minPoints|$maxZoom|$minZoom"
 
         val cached = cache[cacheKey]
@@ -138,23 +138,6 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  private fun normalizedBounds(bounds: ReadableMap): DoubleArray {
-    val north = if (bounds.hasKey("north")) bounds.getDouble("north") else 90.0
-    val south = if (bounds.hasKey("south")) bounds.getDouble("south") else -90.0
-    val east = if (bounds.hasKey("east")) bounds.getDouble("east") else 180.0
-    val west = if (bounds.hasKey("west")) bounds.getDouble("west") else -180.0
-    return doubleArrayOf(north, south, east, west)
-  }
-
-  private fun bboxKey(bounds: DoubleArray): String {
-    fun q(v: Double): Int = (v * 1000.0).roundToInt()
-    return "${q(bounds[0])}_${q(bounds[1])}_${q(bounds[2])}_${q(bounds[3])}"
-  }
-
-  private fun inBounds(lat: Double, lon: Double, bounds: DoubleArray): Boolean {
-    return lat <= bounds[0] && lat >= bounds[1] && lon <= bounds[2] && lon >= bounds[3]
-  }
-
   private fun buildHierarchy(
     points: ReadableArray,
     radius: Double,
@@ -185,7 +168,13 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
     for (zoom in maxZoom downTo minZoom) {
       val tileScale = 2.0.pow(zoom.toDouble())
       val degPerPixelLon = 360.0 / (256.0 * tileScale)
-      val cellLon = (radius * degPerPixelLon).coerceAtLeast(0.000001)
+      val zoomRadiusScale = when {
+        zoom >= 15 -> 0.65
+        zoom >= 12 -> 0.80
+        zoom <= 5 -> 1.30
+        else -> 1.00
+      }
+      val cellLon = (radius * zoomRadiusScale * degPerPixelLon).coerceAtLeast(0.000001)
       val cellLat = cellLon
 
       val buckets = mutableMapOf<String, MutableList<ClusterEntity>>()
@@ -226,26 +215,7 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
     snapshots.forEach { (zoom, snapshot) ->
       snapshot.entities.forEach { entity ->
         if (!entity.isCluster || entity.count <= 1) return@forEach
-        var expansionZoom = maxZoom
-        if (zoom < maxZoom) {
-          for (targetZoom in (zoom + 1)..maxZoom) {
-            val targetSnapshot = snapshots[targetZoom] ?: continue
-            val parentIds = mutableSetOf<String>()
-            targetSnapshot.entities.forEach targetLoop@{ candidate ->
-              for (leaf in entity.leafPointIndices) {
-                if (candidate.leafPointIndices.contains(leaf)) {
-                  parentIds.add(candidate.id)
-                  return@targetLoop
-                }
-              }
-            }
-            if (parentIds.size > 1) {
-              expansionZoom = targetZoom
-              break
-            }
-          }
-        }
-        expansionMap[entity.id] = expansionZoom
+        expansionMap[entity.id] = (zoom + 1).coerceAtMost(maxZoom)
       }
     }
 

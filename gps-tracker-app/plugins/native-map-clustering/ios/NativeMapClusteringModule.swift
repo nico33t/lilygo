@@ -53,6 +53,7 @@ class NativeMapClusteringModule: NSObject {
         let minZoom = (options?["minZoom"] as? NSNumber)?.intValue ?? 0
         let z = max(minZoom, min(maxZoom, zoom.intValue))
 
+        _ = bounds
         let cacheKey = "\(datasetId)|\(points.count)|\(radius)|\(minPoints)|\(maxZoom)|\(minZoom)"
 
         if let cached = self.datasetCache[cacheKey] {
@@ -124,19 +125,6 @@ class NativeMapClusteringModule: NSObject {
     resolver(lastExpansionZoom[clusterId] ?? 18)
   }
 
-  private func normalizedBounds(_ bounds: [String: Any]) -> (north: Double, south: Double, east: Double, west: Double) {
-    let north = (bounds["north"] as? NSNumber)?.doubleValue ?? 90.0
-    let south = (bounds["south"] as? NSNumber)?.doubleValue ?? -90.0
-    let east = (bounds["east"] as? NSNumber)?.doubleValue ?? 180.0
-    let west = (bounds["west"] as? NSNumber)?.doubleValue ?? -180.0
-    return (north, south, east, west)
-  }
-
-  private func bboxKey(bounds: (north: Double, south: Double, east: Double, west: Double)) -> String {
-    func q(_ value: Double) -> Int { Int((value * 1000.0).rounded()) }
-    return "\(q(bounds.north))_\(q(bounds.south))_\(q(bounds.east))_\(q(bounds.west))"
-  }
-
   private func insertCache(cacheKey: String, entry: DatasetCacheEntry) {
     datasetCache[cacheKey] = entry
     cacheOrder.removeAll(where: { $0 == cacheKey })
@@ -179,7 +167,17 @@ class NativeMapClusteringModule: NSObject {
     for zoom in stride(from: maxZoom, through: minZoom, by: -1) {
       let tileScale = pow(2.0, Double(zoom))
       let degPerPixelLon = 360.0 / (256.0 * tileScale)
-      let cellLon = max(0.000001, radius * degPerPixelLon)
+      let zoomRadiusScale: Double
+      if zoom >= 15 {
+        zoomRadiusScale = 0.65
+      } else if zoom >= 12 {
+        zoomRadiusScale = 0.80
+      } else if zoom <= 5 {
+        zoomRadiusScale = 1.30
+      } else {
+        zoomRadiusScale = 1.00
+      }
+      let cellLon = max(0.000001, radius * zoomRadiusScale * degPerPixelLon)
       let cellLat = cellLon
 
       var buckets: [String: [ClusterEntity]] = [:]
@@ -268,25 +266,7 @@ class NativeMapClusteringModule: NSObject {
     var expansionMap: [String: Int] = [:]
     for (zoom, snapshot) in snapshots {
       for entity in snapshot.entities where entity.isCluster && entity.count > 1 {
-        var expansion = maxZoom
-        if zoom < maxZoom {
-          for targetZoom in (zoom + 1)...maxZoom {
-            guard let targetSnapshot = snapshots[targetZoom] else { continue }
-            var parents = Set<String>()
-            for candidate in targetSnapshot.entities {
-              for leaf in entity.leafPointIndices where candidate.leafPointIndices.contains(leaf) {
-                parents.insert(candidate.id)
-                break
-              }
-              if parents.count > 1 { break }
-            }
-            if parents.count > 1 {
-              expansion = targetZoom
-              break
-            }
-          }
-        }
-        expansionMap[entity.id] = expansion
+        expansionMap[entity.id] = min(maxZoom, zoom + 1)
       }
     }
     return expansionMap
