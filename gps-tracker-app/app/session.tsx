@@ -109,8 +109,42 @@ export default function SessionScreen() {
     const datasetId = `session_${id}`
     
     // 1. Try sync lookup first (Normalized & Cached logic)
-    import('../services/nativeClustering').then(({ getGeoJsonForZoomSync, buildFullGeoJsonHierarchy }) => {
-      const collection = getGeoJsonForZoomSync(stableZoom, datasetId)
+    import('../services/nativeClustering').then(async ({ getGeoJsonForZoomSync, buildFullGeoJsonHierarchy, fetchGeoJsonForZoom }) => {
+      let collection = getGeoJsonForZoomSync(stableZoom, datasetId)
+      
+      if (!collection) {
+        // 2. If not in cache, check if it's already in native cache or build it
+        collection = await fetchGeoJsonForZoom(datasetId, stableZoom)
+        
+        if (!collection) {
+          if (clusterComputeTimerRef.current) clearTimeout(clusterComputeTimerRef.current)
+          clusterComputeTimerRef.current = setTimeout(async () => {
+            const currentRun = ++clusterRunId.current
+            await buildFullGeoJsonHierarchy(clusterInput, {
+              ...clusterTuning,
+              datasetId,
+              radius: clusterTuning.radius ?? CLUSTER_RADIUS,
+              minPoints: clusterTuning.minPoints ?? CLUSTER_MIN_POINTS,
+              maxZoom: clusterTuning.maxZoom ?? CLUSTER_MAX_ZOOM,
+            })
+            
+            if (currentRun !== clusterRunId.current) return
+            
+            const freshCollection = await fetchGeoJsonForZoom(datasetId, stableZoom)
+            if (freshCollection) {
+              setClusters(freshCollection.features.map(f => ({
+                id: f.id,
+                type: f.properties.type,
+                count: f.properties.point_count,
+                latitude: f.geometry.coordinates[1],
+                longitude: f.geometry.coordinates[0],
+              })))
+            }
+          }, 100)
+          return
+        }
+      }
+
       if (collection) {
         setClusters(collection.features.map(f => ({
           id: f.id,
@@ -119,31 +153,7 @@ export default function SessionScreen() {
           latitude: f.geometry.coordinates[1],
           longitude: f.geometry.coordinates[0],
         })))
-        return
       }
-
-      // 2. If not cached, trigger a full hierarchy build (pre-calculations)
-      if (clusterComputeTimerRef.current) clearTimeout(clusterComputeTimerRef.current)
-      clusterComputeTimerRef.current = setTimeout(() => {
-        buildFullGeoJsonHierarchy(clusterInput, {
-          ...clusterTuning,
-          datasetId,
-          radius: clusterTuning.radius ?? CLUSTER_RADIUS,
-          minPoints: clusterTuning.minPoints ?? CLUSTER_MIN_POINTS,
-          maxZoom: clusterTuning.maxZoom ?? CLUSTER_MAX_ZOOM,
-        }).then(hierarchy => {
-          const res = hierarchy[stableZoom.toString()]
-          if (res) {
-            setClusters(res.features.map(f => ({
-              id: f.id,
-              type: f.properties.type,
-              count: f.properties.point_count,
-              latitude: f.geometry.coordinates[1],
-              longitude: f.geometry.coordinates[0],
-            })))
-          }
-        })
-      }, 100)
     })
   }, [canCluster, clusterInput, region, clusterTuning, id])
 
@@ -181,16 +191,15 @@ export default function SessionScreen() {
                 <Polyline coordinates={coords} strokeColor={C.accent} strokeWidth={3} />
               )}
 
-              {/* Native Markers for interaction (hidden but touchable) */}
               {canCluster && clusters.map((feature) => {
                 const isCluster = feature.type === 'cluster' && feature.count > 1
-                if (!isCluster) return null
                 return (
                   <Marker
-                    key={`cluster-hittest-${feature.id}`}
+                    key={`cluster-${feature.id}`}
                     coordinate={{ latitude: feature.latitude, longitude: feature.longitude }}
                     tracksViewChanges={false}
-                    opacity={0}
+                    pinColor={isCluster ? getClusterPinColor(feature.count) : CLUSTER_COLOR_LOW}
+                    title={isCluster ? `${feature.count}` : undefined}
                   />
                 )
               })}
@@ -211,22 +220,6 @@ export default function SessionScreen() {
                 </>
               )}
             </MapView>
-
-            {/* GPU Skia Layer */}
-            {canCluster && region && (
-              <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                <Canvas style={styles.map}>
-                  <SkiaClusterLayer
-                    collection={getGeoJsonForZoomSync(computeRawZoom(region.longitudeDelta), `session_${id}`)}
-                    projection={createMercatorProjection(
-                      region,
-                      S.windowWidth || 400,
-                      S.windowHeight || 800
-                    )}
-                  />
-                </Canvas>
-              </View>
-            )}
           </View>
 
           <View

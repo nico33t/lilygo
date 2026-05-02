@@ -73,7 +73,25 @@ module.exports = function withNativeMarkerImageCache(config) {
         return config
       }
 
-      const drawableDir = path.join(projectRoot, 'android', 'app', 'src', 'main', 'res', 'drawable-nodpi')
+      const resDir = path.join(projectRoot, 'android', 'app', 'src', 'main', 'res')
+      
+      const TARGET_FOLDER = 'drawable-mdpi';
+      const densityFolders = [
+        'drawable-ldpi',
+        'drawable-mdpi',
+        'drawable-hdpi',
+        'drawable-xhdpi',
+        'drawable-xxhdpi',
+        'drawable-xxxhdpi',
+        'drawable-nodpi'
+      ];
+
+      densityFolders.forEach(folder => {
+        const p = path.join(resDir, folder, ANDROID_DRAWABLE_NAME)
+        if (fs.existsSync(p)) fs.unlinkSync(p)
+      })
+
+      const drawableDir = path.join(resDir, TARGET_FOLDER)
       ensureDir(drawableDir)
       copyIfChanged(srcPng, path.join(drawableDir, ANDROID_DRAWABLE_NAME))
       return config

@@ -22,6 +22,8 @@ private struct DatasetCacheEntry {
   let points: [[String: Any]]
   let snapshots: [Int: ZoomSnapshot]
   let entitiesById: [String: ClusterEntity]
+  let leaves: [String: [[String: Any]]]
+  let expansionZoom: [String: Int]
 }
 
 @objc(NativeMapClusteringModule)
@@ -228,46 +230,55 @@ class NativeMapClusteringModule: NSObject {
     
     var current = entities
 
+    // Cluster top-down or bottom-up? Supercluster usually builds a tree.
+    // For React Native bridge performance, we'll keep the snapshot-per-zoom approach
+    // but use a more stable distance-based clustering.
     for zoom in stride(from: maxZoom, through: minZoom, by: -1) {
       let tileScale = pow(2.0, Double(zoom))
-      let degPerPixelLon = 360.0 / (256.0 * tileScale)
-      let zoomRadiusScale: Double
-      if zoom >= 15 {
-        zoomRadiusScale = 0.65
-      } else if zoom >= 12 {
-        zoomRadiusScale = 0.80
-      } else if zoom <= 5 {
-        zoomRadiusScale = 1.30
-      } else {
-        zoomRadiusScale = 1.00
-      }
-      let cellLon = max(0.000001, radius * zoomRadiusScale * degPerPixelLon)
-      let cellLat = cellLon
-
-      var buckets: [String: [ClusterEntity]] = [:]
-      for e in current {
-        let gx = Int(floor((e.longitude + 180.0) / cellLon))
-        let gy = Int(floor((e.latitude + 90.0) / cellLat))
-        let key = "\(gx)_\(gy)"
-        buckets[key, default: []].append(e)
-      }
-
+      // Map radius from pixels to degrees at this zoom
+      let clusterRadius = radius / (256.0 * tileScale) * 360.0
+      
       var next: [ClusterEntity] = []
-      next.reserveCapacity(current.count)
-
-      // Avoid sorting buckets for performance
-      for (_, bucket) in buckets {
-        let total = bucket.reduce(0) { $0 + $1.count }
-        if total >= minPoints {
-          let weightedLat = bucket.reduce(0.0) { $0 + $1.latitude * Double($1.count) }
-          let weightedLon = bucket.reduce(0.0) { $0 + $1.longitude * Double($1.count) }
+      var processed = Set<Int>()
+      
+      // Stable clustering: sort entities by latitude to make search deterministic
+      let sortedCurrent = current.enumerated().sorted { $0.element.latitude > $1.element.latitude }
+      
+      for (idx, e) in sortedCurrent {
+        if processed.contains(idx) { continue }
+        processed.insert(idx)
+        
+        var clusterMembers = [e]
+        
+        // Find neighbors within clusterRadius
+        // Optimization: only search nearby in sorted list
+        for (jdx, neighbor) in sortedCurrent {
+          if processed.contains(jdx) { continue }
           
-          // Optimization: Merge leaf indices without Set/Sort
-          // Since building bottom-up, indices are already unique and somewhat ordered
+          let latDiff = abs(e.latitude - neighbor.latitude)
+          if latDiff > clusterRadius { 
+             if neighbor.latitude < e.latitude - clusterRadius { break }
+             continue 
+          }
+          
+          let lonDiff = abs(e.longitude - neighbor.longitude)
+          let lonDiffWrapped = min(lonDiff, 360.0 - lonDiff)
+          
+          if lonDiffWrapped <= clusterRadius {
+            clusterMembers.append(neighbor)
+            processed.insert(jdx)
+          }
+        }
+        
+        let total = clusterMembers.reduce(0) { $0 + $1.count }
+        if total >= minPoints && zoom < maxZoom {
+          let weightedLat = clusterMembers.reduce(0.0) { $0 + $1.latitude * Double($1.count) }
+          let weightedLon = clusterMembers.reduce(0.0) { $0 + $1.longitude * Double($1.count) }
+          
           var allLeafIndices: [Int] = []
           allLeafIndices.reserveCapacity(total)
-          for e in bucket {
-            allLeafIndices.append(contentsOf: e.leafPointIndices)
+          for m in clusterMembers {
+            allLeafIndices.append(contentsOf: m.leafPointIndices)
           }
           
           let firstLeaf = allLeafIndices.first ?? -1
@@ -282,21 +293,16 @@ class NativeMapClusteringModule: NSObject {
           )
           next.append(cluster)
           entitiesById[id] = cluster
-          
-          // Pre-populate maps only for clusters
-          leavesMap[id] = allLeafIndices.compactMap { idx in
-            if idx >= 0 && idx < points.count { return points[idx] }
-            return nil
-          }
+          leavesMap[id] = allLeafIndices.compactMap { points[$0] }
           expansionMap[id] = min(maxZoom, zoom + 1)
         } else {
-          for e in bucket {
-            next.append(e)
-            entitiesById[e.id] = e
+          for m in clusterMembers {
+            next.append(m)
+            entitiesById[m.id] = m
           }
         }
       }
-
+      
       snapshots[zoom] = ZoomSnapshot(zoom: zoom, entities: next)
       current = next
     }
@@ -319,8 +325,6 @@ class NativeMapClusteringModule: NSObject {
         let maxZoom = (options?["maxZoom"] as? NSNumber)?.intValue ?? 18
         let minZoom = (options?["minZoom"] as? NSNumber)?.intValue ?? 0
 
-        // Spatial filtering for "Full Hierarchy" is less useful since we want all zooms,
-        // but we can still cull points that are completely outside the world (safety).
         var validIndices: [Int] = []
         validIndices.reserveCapacity(points.count)
         for (idx, p) in points.enumerated() {
@@ -338,22 +342,53 @@ class NativeMapClusteringModule: NSObject {
           minZoom: minZoom
         )
 
-        var geoJsonOutput: [String: [String: Any]] = [:]
-        for (zoom, snapshot) in built.snapshots {
-          geoJsonOutput["\(zoom)"] = self.toGeoJsonFeatureCollection(snapshot: snapshot)
-        }
+        // Store the full hierarchy NATIVELY to avoid bridge freeze
+        let cacheKey = "full_\(datasetId)"
+        self.insertCache(
+          cacheKey: cacheKey,
+          entry: DatasetCacheEntry(
+            key: cacheKey,
+            createdAt: Date().timeIntervalSince1970,
+            points: points,
+            snapshots: built.snapshots,
+            entitiesById: built.entitiesById,
+            leaves: built.leaves,
+            expansionZoom: built.expansionZoom
+          )
+        )
 
-        // Cache the maps for getLeaves/getExpansionZoom
-        self.lastLeaves = built.leaves
-        self.lastExpansionZoom = built.expansionZoom
+        // Return only a "Success" metadata to JS. JS will then ask for specific zooms sync/async.
+        // This prevents the "5000 points x 20 levels" bridge death.
+        let meta: [String: Any] = [
+          "datasetId": datasetId,
+          "pointsCount": validIndices.count,
+          "status": "ready"
+        ]
 
-        DispatchQueue.main.async { resolver(geoJsonOutput) }
+        DispatchQueue.main.async { resolver(meta) }
       } catch {
         DispatchQueue.main.async {
           rejecter("clustering_error", error.localizedDescription, error)
         }
       }
     }
+  }
+
+  @objc(getGeoJsonForZoom:zoom:resolver:rejecter:)
+  func getGeoJsonForZoom(
+    _ datasetId: String,
+    zoom: Int,
+    resolver: @escaping RCTPromiseResolveBlock,
+    rejecter: @escaping RCTPromiseRejectBlock
+  ) {
+    let cacheKey = "full_\(datasetId)"
+    guard let cached = self.datasetCache[cacheKey] else {
+      resolver(nil)
+      return
+    }
+    
+    let snapshot = cached.snapshots[zoom] ?? ZoomSnapshot(zoom: zoom, entities: [])
+    resolver(self.toGeoJsonFeatureCollection(snapshot: snapshot))
   }
 
   private func toGeoJsonFeatureCollection(snapshot: ZoomSnapshot) -> [String: Any] {

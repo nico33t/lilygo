@@ -266,6 +266,7 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
   ) {
     worker.execute {
       try {
+        val datasetId = if (options?.hasKey("datasetId") == true) options.getString("datasetId") else "default"
         val radius = if (options?.hasKey("radius") == true) options.getDouble("radius") else 56.0
         val minPoints = if (options?.hasKey("minPoints") == true) options.getInt("minPoints") else 3
         val maxZoom = if (options?.hasKey("maxZoom") == true) options.getInt("maxZoom") else 18
@@ -281,20 +282,40 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
 
         val built = buildHierarchy(points, validIndices, radius, minPoints, maxZoom, minZoom)
         
-        val geoJsonOutput = Arguments.createMap()
-        built.first.forEach { (zoom, snapshot) ->
-          geoJsonOutput.putMap(zoom.toString(), toGeoJsonFeatureCollection(snapshot))
-        }
+        // Store natively to avoid bridge death
+        val cacheKey = "full_$datasetId"
+        putCache(
+          cacheKey,
+          DatasetCacheEntry(
+            key = cacheKey,
+            points = points,
+            snapshots = built.first,
+            leaves = built.second,
+            expansionZoom = built.third,
+          )
+        )
 
-        lastLeaves = built.second
-        lastPoints = points
-        lastExpansionZoom = built.third
+        val meta = Arguments.createMap()
+        meta.putString("datasetId", datasetId)
+        meta.putInt("pointsCount", validIndices.size)
+        meta.putString("status", "ready")
 
-        reactApplicationContext.runOnUiQueueThread { promise.resolve(geoJsonOutput) }
+        reactApplicationContext.runOnUiQueueThread { promise.resolve(meta) }
       } catch (t: Throwable) {
         reactApplicationContext.runOnUiQueueThread { promise.reject("clustering_error", t.message, t) }
       }
     }
+  }
+
+  @ReactMethod
+  fun getGeoJsonForZoom(datasetId: String, zoom: Int, promise: Promise) {
+    val cacheKey = "full_$datasetId"
+    val entry = cache[cacheKey] ?: run {
+      promise.resolve(null)
+      return
+    }
+    val snapshot = entry.snapshots[zoom] ?: ZoomSnapshot(zoom, emptyList())
+    promise.resolve(toGeoJsonFeatureCollection(snapshot))
   }
 
   private fun toGeoJsonFeatureCollection(snapshot: ZoomSnapshot): WritableMap {

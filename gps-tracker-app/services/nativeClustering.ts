@@ -95,12 +95,23 @@ export function getClusterProviderTuning(provider?: string): Required<ClusterOpt
 export async function buildFullGeoJsonHierarchy(
   points: ClusterPointInput[],
   options: ClusterOptions = {}
-): Promise<GeoJsonHierarchy> {
-  if (!nativeModule?.buildFullHierarchyGeoJSON) return {}
+): Promise<{ datasetId: string; status: string }> {
+  if (!nativeModule?.buildFullHierarchyGeoJSON) return { datasetId: options.datasetId || 'default', status: 'error' }
   
-  const result = await nativeModule.buildFullHierarchyGeoJSON(points, options)
-  if (options.datasetId) {
-    hierarchyCache = { datasetId: options.datasetId, data: result }
+  const result = await nativeModule.buildFullHierarchyGeoJSON(points, options) as any
+  return result
+}
+
+export async function fetchGeoJsonForZoom(datasetId: string, zoom: number): Promise<GeoJsonFeatureCollection | null> {
+  // @ts-ignore - dynamic method
+  if (!nativeModule?.getGeoJsonForZoom) return null
+  // @ts-ignore - dynamic method
+  const result = await nativeModule.getGeoJsonForZoom(datasetId, zoom)
+  if (result) {
+    if (!hierarchyCache || hierarchyCache.datasetId !== datasetId) {
+      hierarchyCache = { datasetId, data: {} }
+    }
+    hierarchyCache.data[Math.round(zoom).toString()] = result
   }
   return result
 }

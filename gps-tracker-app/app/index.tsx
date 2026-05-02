@@ -293,10 +293,14 @@ export default function DevicesScreen() {
         }
         renderItem={() => null}
       />
-      <View style={[styles.bottomTestWrap, { paddingBottom: insets.bottom + 8 }]}>
-        <Pressable style={styles.bottomTestBtn} onPress={() => router.push('/cluster-test' as any)}>
+      <View style={[styles.bottomTestWrap, { paddingBottom: insets.bottom + 12 }]}>
+        <Pressable style={[styles.bottomTestBtn, { backgroundColor: C.text1 }]} onPress={() => router.push('/cluster-test' as any)}>
           <Ionicons name="flask-outline" size={16} color="#fff" />
-          <Text style={styles.bottomTestText}>Test</Text>
+          <Text style={styles.bottomTestText}>Cluster Test</Text>
+        </Pressable>
+        <Pressable style={styles.bottomTestBtn} onPress={() => router.push('/sim-trip-test' as any)}>
+          <Ionicons name="car-outline" size={18} color="#fff" />
+          <Text style={styles.bottomTestText}>Sim Trip</Text>
         </Pressable>
       </View>
     </View>
@@ -430,7 +434,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: 12,
     pointerEvents: 'box-none',
   },
   bottomTestBtn: {

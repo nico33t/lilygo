@@ -162,52 +162,49 @@ export default function ClusterTestScreen() {
 
     // New normalized logic: build full hierarchy once, then use sync lookup
     if (clusterComputeTimerRef.current) clearTimeout(clusterComputeTimerRef.current)
-    clusterComputeTimerRef.current = setTimeout(() => {
+    clusterComputeTimerRef.current = setTimeout(async () => {
       const startedAt = global.performance?.now?.() ?? Date.now()
       
       const datasetId = `cluster_test_${size}`
-      const existing = getGeoJsonForZoomSync(stableZoom, datasetId)
+      let collection = getGeoJsonForZoomSync(stableZoom, datasetId)
       
-      if (existing) {
-        setClusters(existing.features.map(f => ({
+      if (!collection) {
+        // If not in cache, we need to build or fetch
+        const { fetchGeoJsonForZoom, buildFullGeoJsonHierarchy } = await import('../services/nativeClustering')
+        
+        // Try to fetch first (it might be in native cache)
+        collection = await fetchGeoJsonForZoom(datasetId, stableZoom)
+        
+        if (!collection) {
+          // If still not there, rebuild full hierarchy
+          await buildFullGeoJsonHierarchy(inputPoints, {
+            ...clusterTuning,
+            datasetId,
+            radius: datasetTuning.radius,
+            minPoints: datasetTuning.minPoints,
+            maxZoom: datasetTuning.maxZoom,
+          })
+          collection = await fetchGeoJsonForZoom(datasetId, stableZoom)
+        }
+      }
+      
+      if (collection && runId === runIdRef.current) {
+        setClusters(collection.features.map(f => ({
           id: f.id,
           type: f.properties.type,
           count: f.properties.point_count,
           latitude: f.geometry.coordinates[1],
           longitude: f.geometry.coordinates[0],
         })))
-        return
-      }
-
-      import('../services/nativeClustering').then(({ buildFullGeoJsonHierarchy }) => {
-        buildFullGeoJsonHierarchy(inputPoints, {
-          ...clusterTuning,
-          datasetId,
-          radius: datasetTuning.radius,
-          minPoints: datasetTuning.minPoints,
-          maxZoom: datasetTuning.maxZoom,
+        
+        const finishedAt = global.performance?.now?.() ?? Date.now()
+        setBench({
+          ms: Math.max(0, finishedAt - startedAt),
+          points: inputPoints.length,
+          clusters: collection.features.length,
         })
-          .then((res) => {
-            if (runId !== runIdRef.current) return
-            const collection = res[stableZoom.toString()]
-            if (collection) {
-              setClusters(collection.features.map(f => ({
-                id: f.id,
-                type: f.properties.type,
-                count: f.properties.point_count,
-                latitude: f.geometry.coordinates[1],
-                longitude: f.geometry.coordinates[0],
-              })))
-            }
-            const finishedAt = global.performance?.now?.() ?? Date.now()
-            setBench({
-              ms: Math.max(0, finishedAt - startedAt),
-              points: inputPoints.length,
-              clusters: clusters.length,
-            })
-          })
-      })
-    }, 60) // Much lower debounce because we have sync cache
+      }
+    }, 60)
   }, [clusterTuning, datasetTuning, inputPoints, region, size, stableZoomRef])
 
   const onClusterPress = async (feature: ClusterFeature) => {
@@ -279,35 +276,34 @@ export default function ClusterTestScreen() {
             regionDebounceRef.current = setTimeout(() => setRegion(next), 120)
           }}
         >
-          {/* We still use native markers for interaction, but we could also use Skia for all */}
           {clusters.map((f) => {
-            if (f.type !== 'cluster' || f.count <= 1) return null
+            const isCluster = f.type === 'cluster' && f.count > 1
+            if (isCluster) {
+              return (
+                <Marker
+                  key={f.id}
+                  coordinate={{ latitude: f.latitude, longitude: f.longitude }}
+                  tracksViewChanges={false}
+                  onPress={() => onClusterPress(f)}
+                  pinColor={getClusterPinColor(f.count)}
+                  title={`${f.count}`}
+                />
+              )
+            }
+
+            // Single point marker
             return (
               <Marker
                 key={f.id}
                 coordinate={{ latitude: f.latitude, longitude: f.longitude }}
+                anchor={{ x: 0.5, y: 0.5 }}
+                flat
                 tracksViewChanges={false}
-                onPress={() => onClusterPress(f)}
-                pinColor={getClusterPinColor(f.count)}
-                opacity={0} // Hide native markers, only use for hit-testing
+                image={SHARED_MARKER_IMAGE as any}
               />
             )
           })}
         </MapView>
-
-        {/* GPU Skia Layer Overlay */}
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Canvas style={styles.canvas}>
-             <SkiaClusterLayer
-               collection={getGeoJsonForZoomSync(computeRawZoom(region.longitudeDelta), `cluster_test_${size}`)}
-               projection={require('../services/mapProjection').createMercatorProjection(
-                 region,
-                 S.windowWidth || 400, // Use actual width if available
-                 S.windowHeight || 800  // Use actual height if available
-               )}
-             />
-          </Canvas>
-        </View>
       </View>
 
       <Modal
