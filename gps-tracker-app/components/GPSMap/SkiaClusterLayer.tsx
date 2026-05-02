@@ -1,13 +1,10 @@
 import React, { useMemo } from 'react'
-import { StyleSheet } from 'react-native'
 import {
   Atlas,
-  Canvas,
   Group,
   Skia,
   rect,
   useFont,
-  useTexture,
   Text as SkiaText,
   Circle as SkiaCircle,
 } from '@shopify/react-native-skia'
@@ -24,33 +21,46 @@ export const SkiaClusterLayer = ({
 }: SkiaClusterLayerProps) => {
   const font = useFont(null, 12)
   
-  // Point markers using Atlas for peak performance
-  const pointAtlasData = useMemo(() => {
-    if (!collection) return { rects: [], transforms: [] }
+  // Point markers using Atlas with high memory efficiency
+  const atlasData = useMemo(() => {
+    if (!collection) return null
     
-    const rects: any[] = []
+    const features = collection.features
+    const count = features.length
+    
+    // We use a shared rect for all points to save memory
+    const markerRect = rect(0, 0, 12, 12)
+    const sprites: any[] = []
     const transforms: any[] = []
     
-    const markerRect = rect(0, 0, 12, 12)
+    // Performance optimization: single pass for both points and identifying clusters
+    const clusters: any[] = []
     
-    collection.features.forEach(f => {
-      if (f.properties.cluster) return
-      const pos = projection(f.geometry.coordinates[1], f.geometry.coordinates[0])
-      if (pos) {
-        rects.push(markerRect)
-        // RSXform: [scos, ssin, tx, ty]
+    for (let i = 0; i < count; i++) {
+      const f = features[i]
+      const coords = f.geometry.coordinates
+      const pos = projection(coords[1], coords[0])
+      
+      if (!pos) continue
+
+      if (f.properties.cluster) {
+        clusters.push({ ...f, pos })
+      } else {
+        sprites.push(markerRect)
+        // RSXform: [scos, ssin, tx, ty] -> Scale 1, Rotation 0, Translation pos
         transforms.push(Skia.RSXform(1, 0, pos.x - 6, pos.y - 6))
       }
-    })
+    }
     
-    return { rects, transforms }
+    return { sprites, transforms, clusters }
   }, [collection, projection])
 
-  // Simple blue dot texture for Atlas
+  // Tiny static texture (144 pixels) - very memory efficient
   const pointTexture = useMemo(() => {
     const surface = Skia.Surface.Make(12, 12)!
     const canvas = surface.getCanvas()
     const paint = Skia.Paint()
+    paint.setAntiAlias(true)
     paint.setColor(Skia.Color('#2E86DE'))
     canvas.drawCircle(6, 6, 5, paint)
     paint.setColor(Skia.Color('white'))
@@ -60,34 +70,31 @@ export const SkiaClusterLayer = ({
     return surface.makeImageSnapshot()
   }, [])
 
-  if (!collection) return null
+  if (!collection || !atlasData) return null
 
   return (
     <Group>
-      {/* GPU Atlas for points */}
+      {/* GPU Atlas for points - The heavy lifting is done here in one pass */}
       <Atlas
         image={pointTexture}
-        sprites={pointAtlasData.rects}
-        transforms={pointAtlasData.transforms}
+        sprites={atlasData.sprites}
+        transforms={atlasData.transforms}
       />
 
-      {/* Clusters (few enough for regular Skia elements) */}
-      {collection.features.map((f) => {
-        if (!f.properties.cluster) return null
-        const pos = projection(f.geometry.coordinates[1], f.geometry.coordinates[0])
-        if (!pos) return null
-        
+      {/* Clusters - Rendered as standard Skia elements (usually few enough to not impact memory) */}
+      {atlasData.clusters.map((f) => {
         const count = f.properties.point_count
         const color = count > 50 ? '#E74C3C' : count > 10 ? '#F39C12' : '#2E86DE'
         
         return (
           <Group key={f.id}>
-            <SkiaCircle cx={pos.x} cy={pos.y} r={16} color={color} />
-            <SkiaCircle cx={pos.x} cy={pos.y} r={16} color="white" style="stroke" strokeWidth={2} />
+            <SkiaCircle cx={f.pos.x} cy={f.pos.y} r={16} color={color}>
+               <SkiaCircle cx={f.pos.x} cy={f.pos.y} r={16} color="white" style="stroke" strokeWidth={2} />
+            </SkiaCircle>
             {font && (
               <SkiaText
-                x={pos.x - (font.measureText(count.toString()).width / 2)}
-                y={pos.y + 4}
+                x={f.pos.x - (font.measureText(count.toString()).width / 2)}
+                y={f.pos.y + 4}
                 text={count.toString()}
                 font={font}
                 color="white"
