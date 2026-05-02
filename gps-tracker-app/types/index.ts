@@ -11,6 +11,7 @@ export interface GPSData {
   stored?: boolean   // true = last known position from NVS, not live
   lat: number
   lon: number
+  lng?: number       // alias for lon for UI/API interoperability
   speed: number
   alt: number
   heading?: number   // course over ground, degrees 0-360

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { getBackend } from '../services/backendService'
 import { useTrackerStore } from '../store/tracker'
+import { normalizeLiveDataToGPS } from '../services/gpsNormalizer'
 
 export function useRemote(deviceId: string, enabled: boolean) {
   const setGPS    = useTrackerStore((s) => s.setGPS)
@@ -13,18 +14,7 @@ export function useRemote(deviceId: string, enabled: boolean) {
     getBackend().then((backend) => {
       setRemote(true)
       unsub = backend.subscribeToLive(deviceId, (live) => {
-        setGPS({
-          valid: true,
-          lat: live.lat,
-          lon: live.lon,
-          speed: live.speed,
-          alt: live.alt,
-          vsat: 0,
-          usat: 0,
-          acc: 0,
-          hdop: 0,
-          time: new Date(live.ts * 1000).toISOString(),
-        })
+        setGPS(normalizeLiveDataToGPS(live))
       })
     }).catch(() => setRemote(false))
 

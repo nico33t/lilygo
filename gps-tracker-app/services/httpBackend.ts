@@ -1,5 +1,6 @@
 import type { TrackerBackend, LiveData, Session } from './backendService'
 import type { TrackPoint } from '../types'
+import { normalizeTrackPoints } from './gpsNormalizer'
 
 export class HttpBackend implements TrackerBackend {
   constructor(private baseUrl: string) {}
@@ -29,7 +30,9 @@ export class HttpBackend implements TrackerBackend {
   async getSessionPoints(sessionId: string, deviceId: string): Promise<TrackPoint[]> {
     try {
       const res = await fetch(`${this.baseUrl}/sessions/${sessionId}/points?device_id=${deviceId}`)
-      return res.ok ? res.json() : []
+      if (!res.ok) return []
+      const raw = await res.json()
+      return Array.isArray(raw) ? normalizeTrackPoints(raw) : []
     } catch { return [] }
   }
 }

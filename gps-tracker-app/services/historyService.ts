@@ -1,5 +1,6 @@
 import { getBackend, Session } from './backendService'
 import type { TrackPoint } from '../types'
+import { normalizeTrackPoints } from './gpsNormalizer'
 
 const CACHE_KEY = (deviceId: string) => `history_cache_${deviceId}`
 
@@ -27,7 +28,7 @@ export async function listSessions(deviceId: string, limit = 20): Promise<Sessio
 export async function getSessionPoints(sessionId: string, deviceId: string): Promise<TrackPoint[]> {
   try {
     const backend = await getBackend()
-    return await backend.getSessionPoints(sessionId, deviceId)
+    return normalizeTrackPoints(await backend.getSessionPoints(sessionId, deviceId))
   } catch { return [] }
 }
 

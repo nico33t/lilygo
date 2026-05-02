@@ -4,6 +4,7 @@ import { GPSData, OtaStatus, PowerData, SimData, TrackerConfig, WSCommand, WSCon
 import { BLE_SERVICE_UUID, BLE_RX_UUID, BLE_TX_UUID, RECONNECT_DELAY_MS } from '../constants/tracker'
 import { saveLastDevice } from './bleCache'
 import { notifyOtaAvailable } from './proximityService'
+import { normalizeGPSData } from './gpsNormalizer'
 
 let _lastOtaNotifiedVersion: string | null = null
 
@@ -92,7 +93,7 @@ function parseNotification(raw: string) {
           const current = useTrackerStore.getState().ota
           if (current) useTrackerStore.getState().setOta({ ...current, progress: (msg as any).pct })
         } else {
-          useTrackerStore.getState().setGPS(msg as GPSData)
+          useTrackerStore.getState().setGPS(normalizeGPSData(msg as GPSData))
         }
       } catch (e) {
         console.warn('[BLE] JSON parse error:', e, 'raw json:', json.slice(0, 80))
@@ -274,7 +275,7 @@ export function startSimulation() {
   _simTimer = setInterval(() => {
     t++
     store.setLastRx(Date.now())
-    store.setGPS({
+    store.setGPS(normalizeGPSData({
       valid: true, stored: false,
       lat: 45.4656 + Math.sin(t * 0.1) * 0.001,
       lon: 9.1860  + Math.cos(t * 0.1) * 0.001,
@@ -283,7 +284,7 @@ export function startSimulation() {
       vsat: 8, usat: 6,
       acc: 3.5, hdop: 1.2,
       time: new Date().toISOString().replace('T', ' ').slice(0, 19),
-    })
+    }))
     store.setPower({ mode: 'MOVING', bat_mv: 4100 })
     store.setSim({ rssi: -72, iccid: '12345678', op: 'SIM (sim)', net: 'LTE-M', reg: true })
   }, 2000)

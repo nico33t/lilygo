@@ -1,6 +1,7 @@
 import { useTrackerStore } from '../store/tracker'
 import { GPSData, TrackerConfig, WSCommand, WSConfigMessage } from '../types'
 import { RECONNECT_DELAY_MS, buildWsUrl } from '../constants/tracker'
+import { normalizeGPSData } from './gpsNormalizer'
 
 let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -46,7 +47,7 @@ export function connect(ip: string) {
           gnss_mode: cfg.gnss_mode,
         } as TrackerConfig)
       } else {
-        useTrackerStore.getState().setGPS(msg as GPSData)
+        useTrackerStore.getState().setGPS(normalizeGPSData(msg as GPSData))
       }
     } catch {
       // malformed message, ignore

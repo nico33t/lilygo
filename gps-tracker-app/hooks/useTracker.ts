@@ -4,6 +4,7 @@ import { connect as wsConnect, disconnect as wsDisconnect } from '../services/ws
 import { getBackend } from '../services/backendService'
 import { useTrackerStore } from '../store/tracker'
 import type { LiveData } from '../services/backendService'
+import { normalizeLiveDataToGPS } from '../services/gpsNormalizer'
 
 const IP_RE = /^\d{1,3}(\.\d{1,3}){3}/
 
@@ -49,18 +50,6 @@ export function useTracker(deviceId: string) {
 
 function applyLiveData(data: LiveData) {
   const store = useTrackerStore.getState()
-  store.setGPS({
-    valid: true,
-    lat: data.lat,
-    lon: data.lon,
-    speed: data.speed,
-    alt: data.alt,
-    heading: 0,
-    vsat: 0,
-    usat: 0,
-    acc: 0,
-    hdop: 0,
-    time: new Date(data.ts * 1000).toISOString(),
-  })
+  store.setGPS(normalizeLiveDataToGPS(data))
   store.setPower({ mode: data.power_mode as any, bat_mv: data.bat_mv })
 }

@@ -9,6 +9,7 @@ import {
   TrackerConfig,
 } from '../types'
 import { DEFAULT_CONFIG, MAX_TRACK_POINTS } from '../constants/tracker'
+import { normalizeGPSData } from '../services/gpsNormalizer'
 
 interface TrackerState {
   gps: GPSData | null
@@ -58,12 +59,15 @@ export const useTrackerStore = create<TrackerState>((set) => ({
   setProximityAlarm: (proximityAlarmEnabled) => set({ proximityAlarmEnabled }),
 
   setGPS: (data) =>
-    set((state) => ({
-      gps: data,
-      track: data.valid
-        ? [...state.track.slice(-MAX_TRACK_POINTS), { lat: data.lat, lon: data.lon }]
-        : state.track,
-    })),
+    set((state) => {
+      const gps = normalizeGPSData(data)
+      return {
+        gps,
+        track: gps.valid
+          ? [...state.track.slice(-MAX_TRACK_POINTS), { lat: gps.lat, lon: gps.lon }]
+          : state.track,
+      }
+    }),
 
   setStatus: (status) => set({ status }),
   setConfig: (config) => set({ config }),

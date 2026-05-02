@@ -7,6 +7,27 @@ import type {
 } from '../types/clustering'
 import { PROVIDER_GOOGLE } from 'react-native-maps'
 
+export type GeoJsonFeature = {
+  type: 'Feature'
+  id: string
+  geometry: {
+    type: 'Point'
+    coordinates: [number, number]
+  }
+  properties: {
+    cluster: boolean
+    point_count: number
+    type: 'cluster' | 'point'
+  }
+}
+
+export type GeoJsonFeatureCollection = {
+  type: 'FeatureCollection'
+  features: GeoJsonFeature[]
+}
+
+export type GeoJsonHierarchy = Record<string, GeoJsonFeatureCollection>
+
 type NativeMapClusteringModule = {
   buildClusters: (
     points: ClusterPointInput[],
@@ -14,6 +35,10 @@ type NativeMapClusteringModule = {
     bounds: ClusterBounds,
     options?: ClusterOptions
   ) => Promise<ClusterFeature[]>
+  buildFullHierarchyGeoJSON: (
+    points: ClusterPointInput[],
+    options?: ClusterOptions
+  ) => Promise<GeoJsonHierarchy>
   getLeaves: (clusterId: string, limit: number, offset: number) => Promise<ClusterPointInput[]>
   getExpansionZoom: (clusterId: string) => Promise<number>
 }
@@ -21,8 +46,10 @@ type NativeMapClusteringModule = {
 const nativeModule = NativeModules.NativeMapClusteringModule as NativeMapClusteringModule | undefined
 const CLUSTERING_ENV = process.env.EXPO_PUBLIC_CLUSTERING_ENABLED
 
+// Client-side cache for the full hierarchy
+let hierarchyCache: { datasetId: string; data: GeoJsonHierarchy } | null = null
+
 export function isClusteringFeatureEnabled(): boolean {
-  // Enabled by default unless explicitly set to false/0/off.
   if (!CLUSTERING_ENV) return true
   const normalized = CLUSTERING_ENV.trim().toLowerCase()
   return normalized !== 'false' && normalized !== '0' && normalized !== 'off'
@@ -31,7 +58,7 @@ export function isClusteringFeatureEnabled(): boolean {
 export function isNativeClusteringAvailable(): boolean {
   return isClusteringFeatureEnabled() &&
     (Platform.OS === 'ios' || Platform.OS === 'android')
-    ? Boolean(nativeModule?.buildClusters)
+    ? Boolean(nativeModule?.buildFullHierarchyGeoJSON)
     : false
 }
 
@@ -63,6 +90,25 @@ export function getClusterProviderTuning(provider?: string): Required<ClusterOpt
     minZoom: 0,
     maxZoom: 20,
   }
+}
+
+export async function buildFullGeoJsonHierarchy(
+  points: ClusterPointInput[],
+  options: ClusterOptions = {}
+): Promise<GeoJsonHierarchy> {
+  if (!nativeModule?.buildFullHierarchyGeoJSON) return {}
+  
+  const result = await nativeModule.buildFullHierarchyGeoJSON(points, options)
+  if (options.datasetId) {
+    hierarchyCache = { datasetId: options.datasetId, data: result }
+  }
+  return result
+}
+
+export function getGeoJsonForZoomSync(zoom: number, datasetId?: string): GeoJsonFeatureCollection | null {
+  if (!hierarchyCache || (datasetId && hierarchyCache.datasetId !== datasetId)) return null
+  const z = Math.round(zoom).toString()
+  return hierarchyCache.data[z] || null
 }
 
 export async function buildNativeClusters(
