@@ -2,11 +2,14 @@ import { useEffect, useRef } from 'react'
 import { Alert, Linking, Platform } from 'react-native'
 import { Stack, router } from 'expo-router'
 import * as Notifications from 'expo-notifications'
+import * as Haptics from 'expo-haptics'
 import { bleManager, BleState } from '../services/bleService'
 import { requestProximityPermissions } from '../services/proximityService'
+import { NetworkProvider } from '../contexts/NetworkContext'
 
 export default function RootLayout() {
   const autoConnectDone = useRef(false)
+  const appReadyHapticDone = useRef(false)
 
   useEffect(() => {
     if (!bleManager) return
@@ -51,26 +54,34 @@ export default function RootLayout() {
     return () => sub.remove()
   }, [])
 
+  useEffect(() => {
+    if (appReadyHapticDone.current) return
+    appReadyHapticDone.current = true
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
+  }, [])
+
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        headerStyle: { backgroundColor: '#ffffff' },
-        headerShadowVisible: false,
-        headerTintColor: '#222222',
-      }}
-    >
-      <Stack.Screen name="index" />
-      <Stack.Screen name="login" />
-      <Stack.Screen name="user-settings" />
-      <Stack.Screen name="cluster-test" />
-      <Stack.Screen name="tracker" />
-      <Stack.Screen name="history" options={{ headerShown: false }} />
-      <Stack.Screen name="session" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="settings"
-        options={{ headerShown: true, title: 'Impostazioni', presentation: 'card' }}
-      />
-    </Stack>
+    <NetworkProvider>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          headerStyle: { backgroundColor: '#ffffff' },
+          headerShadowVisible: false,
+          headerTintColor: '#222222',
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="login" />
+        <Stack.Screen name="user-settings" />
+        <Stack.Screen name="cluster-test" />
+        <Stack.Screen name="tracker" />
+        <Stack.Screen name="history" options={{ headerShown: false }} />
+        <Stack.Screen name="session" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="settings"
+          options={{ headerShown: true, title: 'Impostazioni', presentation: 'card' }}
+        />
+      </Stack>
+    </NetworkProvider>
   )
 }

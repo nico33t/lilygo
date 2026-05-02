@@ -23,6 +23,20 @@ const MAP_PROVIDER =
 
 const CENTER = { latitude: 45.4642, longitude: 9.19 } // Milano
 const SHARED_MARKER_IMAGE = getSharedMarkerImageSource()
+const CLUSTER_COLOR_LOW = process.env.EXPO_PUBLIC_CLUSTER_COLOR_LOW ?? '#2E86DE'
+const CLUSTER_COLOR_MEDIUM = process.env.EXPO_PUBLIC_CLUSTER_COLOR_MEDIUM ?? '#F39C12'
+const CLUSTER_COLOR_HIGH = process.env.EXPO_PUBLIC_CLUSTER_COLOR_HIGH ?? '#E74C3C'
+
+function computeRawZoom(longitudeDelta: number): number {
+  const safeDelta = Math.max(longitudeDelta, 0.000001)
+  return Math.max(0, Math.min(22, Math.log2(360 / safeDelta)))
+}
+
+function getClusterPinColor(count: number): string {
+  if (count >= 50) return CLUSTER_COLOR_HIGH
+  if (count >= 10) return CLUSTER_COLOR_MEDIUM
+  return CLUSTER_COLOR_LOW
+}
 
 function getDatasetTuning(size: 50 | 500 | 5000) {
   if (size === 50) return { radius: 42, minPoints: 2, maxZoom: 22 }
@@ -33,6 +47,16 @@ function getDatasetTuning(size: 50 | 500 | 5000) {
 export default function ClusterTestScreen() {
   const insets = useSafeAreaInsets()
   const mapRef = useRef<MapView | null>(null)
+  const regionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clusterComputeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const refreshDelayMsRef = useRef(140)
+  const lastClusterRef = useRef<{
+    zoom: number
+    centerLat: number
+    centerLon: number
+    clusters: ClusterFeature[]
+    at: number
+  } | null>(null)
   const [region, setRegion] = useState<Region>({
     latitude: CENTER.latitude,
     longitude: CENTER.longitude,
@@ -49,6 +73,7 @@ export default function ClusterTestScreen() {
   const [leavesModalVisible, setLeavesModalVisible] = useState(false)
   const [leavesCount, setLeavesCount] = useState(0)
   const runIdRef = useRef(0)
+  const stableZoomRef = useRef<number | null>(null)
   const clusterTuning = useMemo(() => getClusterProviderTuning(MAP_PROVIDER), [])
   const datasetTuning = useMemo(() => getDatasetTuning(size), [size])
 
@@ -83,6 +108,13 @@ export default function ClusterTestScreen() {
   }, [markers, size])
 
   useEffect(() => {
+    return () => {
+      if (regionDebounceRef.current) clearTimeout(regionDebounceRef.current)
+      if (clusterComputeTimerRef.current) clearTimeout(clusterComputeTimerRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!isNativeClusteringAvailable()) {
       setClusters(
         inputPoints.map((p) => ({
@@ -93,39 +125,72 @@ export default function ClusterTestScreen() {
           longitude: p.longitude,
         }))
       )
+      lastClusterRef.current = null
       return
     }
     const runId = ++runIdRef.current
-    const zoom = Math.max(0, Math.min(22, Math.floor(Math.log2(360 / region.longitudeDelta))))
+    const rawZoom = computeRawZoom(region.longitudeDelta)
+    const prevStableZoom = stableZoomRef.current
+    const stableZoom =
+      prevStableZoom == null || Math.abs(rawZoom - prevStableZoom) >= 0.35
+        ? Math.round(rawZoom)
+        : prevStableZoom
+    stableZoomRef.current = stableZoom
+    const now = Date.now()
+    const cached = lastClusterRef.current
+    if (cached) {
+      const sameZoom = cached.zoom === stableZoom
+      const centerDriftLat = Math.abs(region.latitude - cached.centerLat)
+      const centerDriftLon = Math.abs(region.longitude - cached.centerLon)
+      const centerDriftRatioLat = centerDriftLat / Math.max(region.latitudeDelta, 0.000001)
+      const centerDriftRatioLon = centerDriftLon / Math.max(region.longitudeDelta, 0.000001)
+      const movedLittle = centerDriftRatioLat < 0.08 && centerDriftRatioLon < 0.08
+      const stillFresh = now - cached.at < 1800
+      if (sameZoom && movedLittle && stillFresh) {
+        if (clusters !== cached.clusters) setClusters(cached.clusters)
+        return
+      }
+    }
     const bounds = {
       north: region.latitude + region.latitudeDelta / 2,
       south: region.latitude - region.latitudeDelta / 2,
       east: region.longitude + region.longitudeDelta / 2,
       west: region.longitude - region.longitudeDelta / 2,
     }
-    const startedAt = global.performance?.now?.() ?? Date.now()
-    buildNativeClusters(inputPoints, zoom, bounds, {
-      ...clusterTuning,
-      datasetId: `cluster_test_${size}`,
-      radius: datasetTuning.radius,
-      minPoints: datasetTuning.minPoints,
-      maxZoom: datasetTuning.maxZoom,
-    })
-      .then((res) => {
-        if (runId !== runIdRef.current) return
-        setClusters(res)
-        const finishedAt = global.performance?.now?.() ?? Date.now()
-        const clusterCount = res.filter((r) => r.type === 'cluster' && r.count > 1).length
-        setBench({
-          ms: Math.max(0, finishedAt - startedAt),
-          points: inputPoints.length,
-          clusters: clusterCount,
+    if (clusterComputeTimerRef.current) clearTimeout(clusterComputeTimerRef.current)
+    clusterComputeTimerRef.current = setTimeout(() => {
+      const startedAt = global.performance?.now?.() ?? Date.now()
+      buildNativeClusters(inputPoints, stableZoom, bounds, {
+        ...clusterTuning,
+        datasetId: `cluster_test_${size}`,
+        radius: datasetTuning.radius,
+        minPoints: datasetTuning.minPoints,
+        maxZoom: datasetTuning.maxZoom,
+      })
+        .then((res) => {
+          if (runId !== runIdRef.current) return
+          setClusters(res)
+          lastClusterRef.current = {
+            zoom: stableZoom,
+            centerLat: region.latitude,
+            centerLon: region.longitude,
+            clusters: res,
+            at: Date.now(),
+          }
+          const finishedAt = global.performance?.now?.() ?? Date.now()
+          const clusterCount = res.filter((r) => r.type === 'cluster' && r.count > 1).length
+          const ratio = clusterCount / Math.max(1, res.length)
+          refreshDelayMsRef.current = ratio > 0.6 ? 320 : ratio > 0.3 ? 220 : 120
+          setBench({
+            ms: Math.max(0, finishedAt - startedAt),
+            points: inputPoints.length,
+            clusters: clusterCount,
+          })
         })
-      })
-      .catch(() => {
-        if (runId !== runIdRef.current) return
-        setClusters([])
-      })
+        .catch(() => {
+          // Keep previous valid result to avoid transient flicker on async races/errors.
+        })
+    }, refreshDelayMsRef.current)
   }, [clusterTuning, datasetTuning, inputPoints, region, size])
 
   const onClusterPress = async (feature: ClusterFeature) => {
@@ -156,19 +221,23 @@ export default function ClusterTestScreen() {
         <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={8}>
           <Ionicons name="arrow-back" size={20} color={C.text1} />
         </Pressable>
-        <Text style={styles.title}>Cluster Test ({size})</Text>
+        <Text style={styles.title}>Cluster Test</Text>
+        <View style={styles.headerRightSpacer} />
+      </View>
+      <View style={styles.datasetBar}>
+        <Text style={styles.datasetLabel}>Dataset: {size}</Text>
         <View style={styles.controlsRow}>
           {[50, 500, 5000].map((n) => (
             <Pressable
               key={n}
               onPress={() => setSize(n as 50 | 500 | 5000)}
+              hitSlop={8}
               style={[styles.sizeBtn, size === n && styles.sizeBtnActive]}
             >
               <Text style={[styles.sizeBtnText, size === n && styles.sizeBtnTextActive]}>{n}</Text>
             </Pressable>
           ))}
         </View>
-        <View style={styles.headerRightSpacer} />
       </View>
       <View style={styles.benchBar}>
         <Text style={styles.benchText}>
@@ -180,13 +249,17 @@ export default function ClusterTestScreen() {
         ref={mapRef}
         style={styles.map}
         provider={MAP_PROVIDER}
+        googleRenderer={Platform.OS === 'android' ? 'LEGACY' : undefined}
         initialRegion={{
           latitude: CENTER.latitude,
           longitude: CENTER.longitude,
           latitudeDelta: 0.09,
           longitudeDelta: 0.09,
         }}
-        onRegionChangeComplete={setRegion}
+        onRegionChangeComplete={(next) => {
+          if (regionDebounceRef.current) clearTimeout(regionDebounceRef.current)
+          regionDebounceRef.current = setTimeout(() => setRegion(next), 120)
+        }}
       >
         {clusters.map((f) => {
           const isCluster = f.type === 'cluster' && f.count > 1
@@ -197,11 +270,9 @@ export default function ClusterTestScreen() {
                 coordinate={{ latitude: f.latitude, longitude: f.longitude }}
                 tracksViewChanges={false}
                 onPress={() => onClusterPress(f)}
-              >
-                <View style={styles.clusterBubble}>
-                  <Text style={styles.clusterText}>{f.count}</Text>
-                </View>
-              </Marker>
+                pinColor={getClusterPinColor(f.count)}
+                title={`${f.count}`}
+              />
             )
           }
 
@@ -266,9 +337,22 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
   },
+  datasetBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: S.md,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: C.sep,
+  },
+  datasetLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.text1,
+  },
   controlsRow: {
-    position: 'absolute',
-    right: 56,
     flexDirection: 'row',
     gap: 6,
   },

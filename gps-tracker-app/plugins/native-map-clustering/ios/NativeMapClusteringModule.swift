@@ -53,16 +53,15 @@ class NativeMapClusteringModule: NSObject {
         let minZoom = (options?["minZoom"] as? NSNumber)?.intValue ?? 0
         let z = max(minZoom, min(maxZoom, zoom.intValue))
 
-        let bbox = self.normalizedBounds(bounds)
-        let bboxKey = self.bboxKey(bounds: bbox)
-        let cacheKey = "\(datasetId)|\(z)|\(bboxKey)|\(points.count)|\(radius)|\(minPoints)|\(maxZoom)|\(minZoom)"
+        let cacheKey = "\(datasetId)|\(points.count)|\(radius)|\(minPoints)|\(maxZoom)|\(minZoom)"
 
         if let cached = self.datasetCache[cacheKey] {
           let output = self.toOutput(
             snapshot: cached.snapshots[z] ?? ZoomSnapshot(zoom: z, entities: []),
-            points: cached.points,
-            bounds: bbox
+            points: cached.points
           )
+          self.lastLeaves = self.computeLeavesMap(points: cached.points, snapshots: cached.snapshots)
+          self.lastExpansionZoom = self.computeExpansionMap(snapshots: cached.snapshots, maxZoom: maxZoom)
           DispatchQueue.main.async { resolver(output) }
           return
         }
@@ -75,7 +74,7 @@ class NativeMapClusteringModule: NSObject {
           minZoom: minZoom
         )
         let snapshot = built.snapshots[z] ?? ZoomSnapshot(zoom: z, entities: [])
-        let output = self.toOutput(snapshot: snapshot, points: points, bounds: bbox)
+        let output = self.toOutput(snapshot: snapshot, points: points)
         self.lastLeaves = built.leaves
         self.lastExpansionZoom = built.expansionZoom
         self.insertCache(
@@ -138,10 +137,6 @@ class NativeMapClusteringModule: NSObject {
     return "\(q(bounds.north))_\(q(bounds.south))_\(q(bounds.east))_\(q(bounds.west))"
   }
 
-  private func inBounds(lat: Double, lon: Double, bounds: (north: Double, south: Double, east: Double, west: Double)) -> Bool {
-    lat <= bounds.north && lat >= bounds.south && lon <= bounds.east && lon >= bounds.west
-  }
-
   private func insertCache(cacheKey: String, entry: DatasetCacheEntry) {
     datasetCache[cacheKey] = entry
     cacheOrder.removeAll(where: { $0 == cacheKey })
@@ -179,9 +174,6 @@ class NativeMapClusteringModule: NSObject {
 
     var snapshots: [Int: ZoomSnapshot] = [:]
     var entitiesById: [String: ClusterEntity] = [:]
-    var leavesMap: [String: [[String: Any]]] = [:]
-    var expansionMap: [String: Int] = [:]
-
     var current = entities
 
     for zoom in stride(from: maxZoom, through: minZoom, by: -1) {
@@ -200,16 +192,16 @@ class NativeMapClusteringModule: NSObject {
 
       var next: [ClusterEntity] = []
       next.reserveCapacity(current.count)
-      var clusterIdx = 0
 
-      for (cellKey, bucket) in buckets {
+      for cellKey in buckets.keys.sorted() {
+        guard let bucket = buckets[cellKey] else { continue }
         let total = bucket.reduce(0) { $0 + $1.count }
         if total >= minPoints {
           let weightedLat = bucket.reduce(0.0) { $0 + $1.latitude * Double($1.count) }
           let weightedLon = bucket.reduce(0.0) { $0 + $1.longitude * Double($1.count) }
-          let allLeafIndices = bucket.flatMap { $0.leafPointIndices }
-          let id = "c_\(zoom)_\(cellKey)_\(clusterIdx)"
-          clusterIdx += 1
+          let allLeafIndices = Array(Set(bucket.flatMap { $0.leafPointIndices })).sorted()
+          let firstLeaf = allLeafIndices.first ?? -1
+          let id = "c_\(zoom)_\(cellKey)_\(firstLeaf)_\(allLeafIndices.count)"
           let cluster = ClusterEntity(
             id: id,
             latitude: weightedLat / Double(total),
@@ -220,11 +212,6 @@ class NativeMapClusteringModule: NSObject {
           )
           next.append(cluster)
           entitiesById[id] = cluster
-          leavesMap[id] = allLeafIndices.compactMap { idx in
-            if idx >= 0 && idx < points.count { return points[idx] }
-            return nil
-          }
-          expansionMap[id] = min(maxZoom, zoom + 1)
         } else {
           next.append(contentsOf: bucket)
           for e in bucket { entitiesById[e.id] = e }
@@ -235,6 +222,50 @@ class NativeMapClusteringModule: NSObject {
       current = next
     }
 
+    let leavesMap = computeLeavesMap(points: points, snapshots: snapshots)
+    let expansionMap = computeExpansionMap(snapshots: snapshots, maxZoom: maxZoom)
+    return (snapshots, entitiesById, leavesMap, expansionMap)
+  }
+
+  private func toOutput(
+    snapshot: ZoomSnapshot,
+    points: [[String: Any]]
+  ) -> [[String: Any]] {
+    var out: [[String: Any]] = []
+    out.reserveCapacity(snapshot.entities.count)
+    for e in snapshot.entities {
+      out.append([
+        "id": e.id,
+        "type": e.isCluster && e.count > 1 ? "cluster" : "point",
+        "count": e.count,
+        "latitude": e.latitude,
+        "longitude": e.longitude,
+      ])
+    }
+    return out
+  }
+
+  private func computeLeavesMap(
+    points: [[String: Any]],
+    snapshots: [Int: ZoomSnapshot]
+  ) -> [String: [[String: Any]]] {
+    var leavesMap: [String: [[String: Any]]] = [:]
+    for (_, snapshot) in snapshots {
+      for entity in snapshot.entities where entity.isCluster && entity.count > 1 {
+        leavesMap[entity.id] = entity.leafPointIndices.compactMap { idx in
+          if idx >= 0 && idx < points.count { return points[idx] }
+          return nil
+        }
+      }
+    }
+    return leavesMap
+  }
+
+  private func computeExpansionMap(
+    snapshots: [Int: ZoomSnapshot],
+    maxZoom: Int
+  ) -> [String: Int] {
+    var expansionMap: [String: Int] = [:]
     for (zoom, snapshot) in snapshots {
       for entity in snapshot.entities where entity.isCluster && entity.count > 1 {
         var expansion = maxZoom
@@ -243,11 +274,9 @@ class NativeMapClusteringModule: NSObject {
             guard let targetSnapshot = snapshots[targetZoom] else { continue }
             var parents = Set<String>()
             for candidate in targetSnapshot.entities {
-              for leaf in entity.leafPointIndices {
-                if candidate.leafPointIndices.contains(leaf) {
-                  parents.insert(candidate.id)
-                  break
-                }
+              for leaf in entity.leafPointIndices where candidate.leafPointIndices.contains(leaf) {
+                parents.insert(candidate.id)
+                break
               }
               if parents.count > 1 { break }
             }
@@ -260,27 +289,6 @@ class NativeMapClusteringModule: NSObject {
         expansionMap[entity.id] = expansion
       }
     }
-
-    return (snapshots, entitiesById, leavesMap, expansionMap)
-  }
-
-  private func toOutput(
-    snapshot: ZoomSnapshot,
-    points: [[String: Any]],
-    bounds: (north: Double, south: Double, east: Double, west: Double)
-  ) -> [[String: Any]] {
-    var out: [[String: Any]] = []
-    out.reserveCapacity(snapshot.entities.count)
-    for e in snapshot.entities {
-      if !inBounds(lat: e.latitude, lon: e.longitude, bounds: bounds) { continue }
-      out.append([
-        "id": e.id,
-        "type": e.isCluster && e.count > 1 ? "cluster" : "point",
-        "count": e.count,
-        "latitude": e.latitude,
-        "longitude": e.longitude,
-      ])
-    }
-    return out
+    return expansionMap
   }
 }

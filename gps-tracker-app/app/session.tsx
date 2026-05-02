@@ -27,6 +27,20 @@ const CLUSTER_MIN_POINTS = 3
 const CLUSTER_MAX_ZOOM = 18
 const CLUSTER_POINT_THRESHOLD = 80
 const SHARED_MARKER_IMAGE = getSharedMarkerImageSource()
+const CLUSTER_COLOR_LOW = process.env.EXPO_PUBLIC_CLUSTER_COLOR_LOW ?? '#2E86DE'
+const CLUSTER_COLOR_MEDIUM = process.env.EXPO_PUBLIC_CLUSTER_COLOR_MEDIUM ?? '#F39C12'
+const CLUSTER_COLOR_HIGH = process.env.EXPO_PUBLIC_CLUSTER_COLOR_HIGH ?? '#E74C3C'
+
+function computeRawZoom(longitudeDelta: number): number {
+  const safeDelta = Math.max(longitudeDelta, 0.000001)
+  return Math.max(0, Math.min(22, Math.log2(360 / safeDelta)))
+}
+
+function getClusterPinColor(count: number): string {
+  if (count >= 50) return CLUSTER_COLOR_HIGH
+  if (count >= 10) return CLUSTER_COLOR_MEDIUM
+  return CLUSTER_COLOR_LOW
+}
 
 export default function SessionScreen() {
   const { id, device } = useLocalSearchParams<{ id: string; device: string }>()
@@ -38,7 +52,27 @@ export default function SessionScreen() {
   const [region, setRegion] = useState<Region | null>(null)
   const [clusters, setClusters] = useState<ClusterFeature[]>([])
   const clusterRunId = useRef(0)
+  const stableZoomRef = useRef<number | null>(null)
+  const regionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clusterComputeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const refreshDelayMsRef = useRef(140)
+  const lastClusterRef = useRef<{
+    zoom: number
+    centerLat: number
+    centerLon: number
+    latDelta: number
+    lonDelta: number
+    clusters: ClusterFeature[]
+    at: number
+  } | null>(null)
   const clusterTuning = useMemo(() => getClusterProviderTuning(MAP_PROVIDER), [])
+
+  useEffect(() => {
+    return () => {
+      if (regionDebounceRef.current) clearTimeout(regionDebounceRef.current)
+      if (clusterComputeTimerRef.current) clearTimeout(clusterComputeTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     getSessionPoints(id, device).then((pts) => {
@@ -60,11 +94,35 @@ export default function SessionScreen() {
   useEffect(() => {
     if (!canCluster || !region) {
       setClusters([])
+      lastClusterRef.current = null
       return
     }
 
     const runId = ++clusterRunId.current
-    const zoom = Math.max(0, Math.min(22, Math.round(Math.log2(360 / region.longitudeDelta))))
+    const rawZoom = computeRawZoom(region.longitudeDelta)
+    const prevStableZoom = stableZoomRef.current
+    const stableZoom =
+      prevStableZoom == null || Math.abs(rawZoom - prevStableZoom) >= 0.35
+        ? Math.round(rawZoom)
+        : prevStableZoom
+    stableZoomRef.current = stableZoom
+
+    const now = Date.now()
+    const cached = lastClusterRef.current
+    if (cached) {
+      const sameZoom = cached.zoom === stableZoom
+      const centerDriftLat = Math.abs(region.latitude - cached.centerLat)
+      const centerDriftLon = Math.abs(region.longitude - cached.centerLon)
+      const centerDriftRatioLat = centerDriftLat / Math.max(region.latitudeDelta, 0.000001)
+      const centerDriftRatioLon = centerDriftLon / Math.max(region.longitudeDelta, 0.000001)
+      const movedLittle = centerDriftRatioLat < 0.08 && centerDriftRatioLon < 0.08
+      const stillFresh = now - cached.at < 1800
+      if (sameZoom && movedLittle && stillFresh) {
+        if (clusters !== cached.clusters) setClusters(cached.clusters)
+        return
+      }
+    }
+
     const bounds = {
       north: region.latitude + region.latitudeDelta / 2,
       south: region.latitude - region.latitudeDelta / 2,
@@ -72,20 +130,36 @@ export default function SessionScreen() {
       west: region.longitude - region.longitudeDelta / 2,
     }
 
-    buildNativeClusters(clusterInput, zoom, bounds, {
-      ...clusterTuning,
-      radius: clusterTuning.radius ?? CLUSTER_RADIUS,
-      minPoints: clusterTuning.minPoints ?? CLUSTER_MIN_POINTS,
-      maxZoom: clusterTuning.maxZoom ?? CLUSTER_MAX_ZOOM,
-    })
-      .then((result) => {
-        if (clusterRunId.current !== runId) return
-        setClusters(result)
+    if (clusterComputeTimerRef.current) clearTimeout(clusterComputeTimerRef.current)
+    clusterComputeTimerRef.current = setTimeout(() => {
+      buildNativeClusters(clusterInput, stableZoom, bounds, {
+        ...clusterTuning,
+        radius: clusterTuning.radius ?? CLUSTER_RADIUS,
+        minPoints: clusterTuning.minPoints ?? CLUSTER_MIN_POINTS,
+        maxZoom: clusterTuning.maxZoom ?? CLUSTER_MAX_ZOOM,
       })
-      .catch(() => {
-        if (clusterRunId.current !== runId) return
-        setClusters([])
-      })
+        .then((result) => {
+          if (clusterRunId.current !== runId) return
+          if (result.length > 0) {
+            setClusters(result)
+            lastClusterRef.current = {
+              zoom: stableZoom,
+              centerLat: region.latitude,
+              centerLon: region.longitude,
+              latDelta: region.latitudeDelta,
+              lonDelta: region.longitudeDelta,
+              clusters: result,
+              at: Date.now(),
+            }
+            const clusterCount = result.filter((r) => r.type === 'cluster' && r.count > 1).length
+            const ratio = clusterCount / Math.max(1, result.length)
+            refreshDelayMsRef.current = ratio > 0.6 ? 320 : ratio > 0.3 ? 220 : 120
+          }
+        })
+        .catch(() => {
+          // Keep previous valid clusters to avoid flicker/disappear on transient native errors.
+        })
+    }, refreshDelayMsRef.current)
   }, [canCluster, clusterInput, region, clusterTuning])
 
   return (
@@ -104,6 +178,7 @@ export default function SessionScreen() {
           <MapView
             style={{ flex: 1 }}
             provider={MAP_PROVIDER}
+            googleRenderer={Platform.OS === 'android' ? 'LEGACY' : undefined}
             mapPadding={{ top: 0, right: 0, bottom: panelHeight, left: 0 }}
             initialRegion={coords.length > 0 ? {
               latitude: coords[0].latitude,
@@ -111,7 +186,10 @@ export default function SessionScreen() {
               latitudeDelta: 0.05,
               longitudeDelta: 0.05,
             } : undefined}
-            onRegionChangeComplete={(r) => setRegion(r)}
+            onRegionChangeComplete={(next) => {
+              if (regionDebounceRef.current) clearTimeout(regionDebounceRef.current)
+              regionDebounceRef.current = setTimeout(() => setRegion(next), 120)
+            }}
           >
             {coords.length > 1 && (
               <Polyline coordinates={coords} strokeColor={C.accent} strokeWidth={3} />
@@ -124,11 +202,9 @@ export default function SessionScreen() {
                   key={`cluster-${feature.id}`}
                   coordinate={{ latitude: feature.latitude, longitude: feature.longitude }}
                   tracksViewChanges={false}
-                >
-                  <View style={isCluster ? styles.clusterBubble : styles.pointDot}>
-                    {isCluster ? <Text style={styles.clusterText}>{feature.count}</Text> : null}
-                  </View>
-                </Marker>
+                  pinColor={isCluster ? getClusterPinColor(feature.count) : CLUSTER_COLOR_LOW}
+                  title={isCluster ? `${feature.count}` : undefined}
+                />
               )
             })}
 

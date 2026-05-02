@@ -56,12 +56,15 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
         val minZoom = if (options?.hasKey("minZoom") == true) options.getInt("minZoom") else 0
         val z = zoom.toInt().coerceIn(minZoom, maxZoom)
         val bbox = normalizedBounds(bounds)
-        val cacheKey = "${datasetId}|$z|${bboxKey(bbox)}|${points.size()}|$radius|$minPoints|$maxZoom|$minZoom"
+        val cacheKey = "${datasetId}|${points.size()}|$radius|$minPoints|$maxZoom|$minZoom"
 
         val cached = cache[cacheKey]
         if (cached != null) {
           val snapshot = cached.snapshots[z] ?: ZoomSnapshot(z, emptyList())
-          val out = toOutput(snapshot, bbox)
+          val out = toOutput(snapshot)
+          lastLeaves = cached.leaves
+          lastPoints = cached.points
+          lastExpansionZoom = cached.expansionZoom
           reactApplicationContext.runOnUiQueueThread {
             promise.resolve(out)
           }
@@ -70,7 +73,7 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
 
         val built = buildHierarchy(points, radius, minPoints, maxZoom, minZoom)
         val snapshot = built.snapshots[z] ?: ZoomSnapshot(z, emptyList())
-        val out = toOutput(snapshot, bbox)
+        val out = toOutput(snapshot)
         lastLeaves = built.leaves
         lastPoints = points
         lastExpansionZoom = built.expansionZoom
@@ -194,15 +197,13 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
       }
 
       val next = mutableListOf<ClusterEntity>()
-      var cIdx = 0
-      buckets.forEach { (cellKey, bucket) ->
+      buckets.toSortedMap().forEach { (cellKey, bucket) ->
         val total = bucket.sumOf { it.count }
         if (total >= minPoints) {
           val wLat = bucket.sumOf { it.latitude * it.count.toDouble() }
           val wLon = bucket.sumOf { it.longitude * it.count.toDouble() }
-          val leafs = bucket.flatMap { it.leafPointIndices.toList() }.toIntArray()
-          val id = "c_${zoom}_${cellKey}_$cIdx"
-          cIdx += 1
+          val leafs = bucket.flatMap { it.leafPointIndices.toList() }.distinct().sorted().toIntArray()
+          val id = "c_${zoom}_${cellKey}_${leafs.firstOrNull() ?: -1}_${leafs.size}"
           val cluster = ClusterEntity(
             id = id,
             latitude = wLat / total.toDouble(),
@@ -251,10 +252,9 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
     return Triple(snapshots, leaves, expansionMap)
   }
 
-  private fun toOutput(snapshot: ZoomSnapshot, bounds: DoubleArray): WritableArray {
+  private fun toOutput(snapshot: ZoomSnapshot): WritableArray {
     val out = Arguments.createArray()
     snapshot.entities.forEach { e ->
-      if (!inBounds(e.latitude, e.longitude, bounds)) return@forEach
       val item = Arguments.createMap()
       item.putString("id", e.id)
       item.putString("type", if (e.isCluster && e.count > 1) "cluster" else "point")

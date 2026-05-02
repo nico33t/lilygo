@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Platform, StyleSheet, View } from 'react-native'
 import MapView, { Circle, Marker, PROVIDER_DEFAULT, PROVIDER_GOOGLE, Polyline, Region } from 'react-native-maps'
 import { Canvas, Group, Path, RoundedRect, Shadow, Skia, Text, useFont } from '@shopify/react-native-skia'
-import Animated, { createAnimatedComponent, useAnimatedProps, useDerivedValue, useSharedValue, withSpring, withDelay } from 'react-native-reanimated'
 import { useTrackerStore } from '../../store/tracker'
 import { C } from '../../constants/design'
 import { getSharedMarkerImageSource } from '../../services/mapMarkerImage'
@@ -22,8 +21,21 @@ const POSITION_CIRCLE_RADIUS_M = 18
 const MAP_PROVIDER = PROVIDER_GOOGLE;
 const SHARED_MARKER_IMAGE = getSharedMarkerImageSource()
 
-const AnimatedCircle = createAnimatedComponent(Circle)
-const AnimatedMarker = createAnimatedComponent(Marker)
+const Reanimated = (() => {
+  try {
+    return require('react-native-reanimated')
+  } catch {
+    return null
+  }
+})()
+
+const AnimatedCircle = (Reanimated?.createAnimatedComponent?.(Circle) ?? Circle) as typeof Circle
+const AnimatedMarker = (Reanimated?.createAnimatedComponent?.(Marker) ?? Marker) as typeof Marker
+
+function useCompatSharedValue(initial: number): { value: number } {
+  const ref = useRef<{ value: number }>({ value: initial })
+  return ref.current
+}
 
 function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000)
@@ -76,12 +88,20 @@ export default function GPSMap({ bottomPadding = 0, topPadding = 0, onMapDrag, i
   const [mapReady, setMapReady] = useState(false)
 
   // ── Animated Position ───────────────────────────────────────────────────
-  const animLat = useSharedValue(lat ?? 0)
-  const animLon = useSharedValue(lon ?? 0)
+  const animLat = Reanimated?.useSharedValue
+    ? Reanimated.useSharedValue(lat ?? 0)
+    : useCompatSharedValue(lat ?? 0)
+  const animLon = Reanimated?.useSharedValue
+    ? Reanimated.useSharedValue(lon ?? 0)
+    : useCompatSharedValue(lon ?? 0)
 
   // "Follower" values for circle (delayed)
-  const followLat = useSharedValue(lat ?? 0)
-  const followLon = useSharedValue(lon ?? 0)
+  const followLat = Reanimated?.useSharedValue
+    ? Reanimated.useSharedValue(lat ?? 0)
+    : useCompatSharedValue(lat ?? 0)
+  const followLon = Reanimated?.useSharedValue
+    ? Reanimated.useSharedValue(lon ?? 0)
+    : useCompatSharedValue(lon ?? 0)
 
   useEffect(() => {
     if (lat != null && lon != null) {
@@ -90,27 +110,43 @@ export default function GPSMap({ bottomPadding = 0, topPadding = 0, onMapDrag, i
         followLat.value = lat; followLon.value = lon
       } else {
         // Arrow: faster spring to stay on track
-        animLat.value = withSpring(lat, { damping: 20, stiffness: 200 })
-        animLon.value = withSpring(lon, { damping: 20, stiffness: 200 })
+        animLat.value = Reanimated?.withSpring
+          ? Reanimated.withSpring(lat, { damping: 20, stiffness: 200 })
+          : lat
+        animLon.value = Reanimated?.withSpring
+          ? Reanimated.withSpring(lon, { damping: 20, stiffness: 200 })
+          : lon
 
         // Circle: delayed for premium feel
         const followConfig = { damping: 30, stiffness: 80 }
-        followLat.value = withDelay(100, withSpring(lat, followConfig))
-        followLon.value = withDelay(100, withSpring(lon, followConfig))
+        followLat.value =
+          Reanimated?.withDelay && Reanimated?.withSpring
+            ? Reanimated.withDelay(100, Reanimated.withSpring(lat, followConfig))
+            : lat
+        followLon.value =
+          Reanimated?.withDelay && Reanimated?.withSpring
+            ? Reanimated.withDelay(100, Reanimated.withSpring(lon, followConfig))
+            : lon
       }
     }
   }, [lat, lon])
 
-  const animatedMarkerProps = useAnimatedProps(() => ({
-    coordinate: { latitude: animLat.value, longitude: animLon.value }
-  }))
+  const animatedMarkerProps = Reanimated?.useAnimatedProps
+    ? Reanimated.useAnimatedProps(() => ({
+        coordinate: { latitude: animLat.value, longitude: animLon.value },
+      }))
+    : undefined
 
-  const animatedCircleProps = useAnimatedProps(() => ({
-    center: { latitude: followLat.value, longitude: followLon.value }
-  }))
+  const animatedCircleProps = Reanimated?.useAnimatedProps
+    ? Reanimated.useAnimatedProps(() => ({
+        center: { latitude: followLat.value, longitude: followLon.value },
+      }))
+    : undefined
 
 
-  const calloutAnim = useSharedValue(0)
+  const calloutAnim = Reanimated?.useSharedValue
+    ? Reanimated.useSharedValue(0)
+    : useCompatSharedValue(0)
 
   const font = useFont(null, 13)
 
@@ -125,11 +161,15 @@ export default function GPSMap({ bottomPadding = 0, topPadding = 0, onMapDrag, i
 
   // ── Animate callout in / out ──────────────────────────────────────────────
   useEffect(() => {
-    calloutAnim.value = withSpring(showCallout ? 1 : 0, {
-      mass: 0.6,
-      damping: 12,
-      stiffness: 100,
-    })
+    calloutAnim.value = Reanimated?.withSpring
+      ? Reanimated.withSpring(showCallout ? 1 : 0, {
+          mass: 0.6,
+          damping: 12,
+          stiffness: 100,
+        })
+      : showCallout
+        ? 1
+        : 0
   }, [showCallout, calloutAnim])
 
   // ── pointForCoordinate — correct for any bearing/tilt ────────────────────
@@ -278,22 +318,24 @@ export default function GPSMap({ bottomPadding = 0, topPadding = 0, onMapDrag, i
     return { w, h }
   }, [font, labelText, subLabelText])
 
-  const calloutTransform = useDerivedValue(() => {
-    const scale = 0.7 + calloutAnim.value * 0.3
-    const w = badgeMetrics.w
-    const h = badgeMetrics.h + 7
+  const calloutTransform = Reanimated?.useDerivedValue
+    ? Reanimated.useDerivedValue(() => {
+        const scale = 0.7 + calloutAnim.value * 0.3
+        const w = badgeMetrics.w
+        const h = badgeMetrics.h + 7
 
-    const pivotX = w / 2
-    const pivotY = h
+        const pivotX = w / 2
+        const pivotY = h
 
-    return [
-      { translateX: pivotX },
-      { translateY: pivotY },
-      { scale },
-      { translateX: -pivotX },
-      { translateY: -pivotY },
-    ]
-  }, [badgeMetrics])
+        return [
+          { translateX: pivotX },
+          { translateY: pivotY },
+          { scale },
+          { translateX: -pivotX },
+          { translateY: -pivotY },
+        ]
+      }, [badgeMetrics])
+    : undefined
 
   const padding = useMemo(() => {
     if (!mapReady) return { top: 0, right: 0, bottom: 0, left: 0 }
