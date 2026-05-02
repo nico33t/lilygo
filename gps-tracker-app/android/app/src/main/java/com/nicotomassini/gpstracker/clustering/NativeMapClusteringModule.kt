@@ -54,47 +54,81 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
         val maxZoom = if (options?.hasKey("maxZoom") == true) options.getInt("maxZoom") else 18
         val minZoom = if (options?.hasKey("minZoom") == true) options.getInt("minZoom") else 0
         val z = zoom.toInt().coerceIn(minZoom, maxZoom)
-        @Suppress("UNUSED_VARIABLE")
-        val _bounds = bounds
-        val cacheKey = "${datasetId}|${points.size()}|$radius|$minPoints|$maxZoom|$minZoom"
+
+        // Spatial Filtering (Culling)
+        val north = if (bounds.hasKey("north")) bounds.getDouble("north") else 90.0
+        val south = if (bounds.hasKey("south")) bounds.getDouble("south") else -90.0
+        val east = if (bounds.hasKey("east")) bounds.getDouble("east") else 180.0
+        val west = if (bounds.hasKey("west")) bounds.getDouble("west") else -180.0
+        
+        val latPad = Math.abs(north - south) * 0.25
+        val lonPad = Math.abs(east - west) * 0.25
+        
+        val bNorth = (north + latPad).coerceAtMost(90.0)
+        val bSouth = (south - latPad).coerceAtLeast(-90.0)
+        val bEast = east + lonPad
+        val bWest = west - lonPad
+        
+        val filteredIndices = mutableListOf<Int>()
+        for (i in 0 until points.size()) {
+          val p = points.getMap(i) ?: continue
+          val lat = p.getDouble("latitude")
+          val lon = p.getDouble("longitude")
+          
+          if (lat in bSouth..bNorth) {
+            if (bWest <= bEast) {
+              if (lon in bWest..bEast) filteredIndices.add(i)
+            } else {
+              if (lon >= bWest || lon <= bEast) filteredIndices.add(i)
+            }
+          }
+        }
+
+        val cacheKey = "${datasetId}|${filteredIndices.size}|$radius|$minPoints|$maxZoom|$minZoom"
 
         val cached = cache[cacheKey]
         if (cached != null) {
-          val snapshot = cached.snapshots[z] ?: ZoomSnapshot(z, emptyList())
-          val out = toOutput(snapshot)
-          lastLeaves = cached.leaves
-          lastPoints = cached.points
-          lastExpansionZoom = cached.expansionZoom
-          reactApplicationContext.runOnUiQueueThread {
-            promise.resolve(out)
+          // Movement detection
+          if (filteredIndices.isNotEmpty()) {
+            val f = filteredIndices.first()
+            val l = filteredIndices.last()
+            val p1 = points.getMap(f)
+            val p2 = points.getMap(l)
+            val cp1 = cached.points.getMap(f)
+            val cp2 = cached.points.getMap(l)
+            if (p1?.getDouble("latitude") == cp1?.getDouble("latitude") &&
+                p2?.getDouble("latitude") == cp2?.getDouble("latitude")) {
+              val snapshot = cached.snapshots[z] ?: ZoomSnapshot(z, emptyList())
+              val out = toOutput(snapshot)
+              lastLeaves = cached.leaves
+              lastPoints = cached.points
+              lastExpansionZoom = cached.expansionZoom
+              reactApplicationContext.runOnUiQueueThread { promise.resolve(out) }
+              return@execute
+            }
           }
-          return@execute
         }
 
-        val built = buildHierarchy(points, radius, minPoints, maxZoom, minZoom)
-        val snapshot = built.snapshots[z] ?: ZoomSnapshot(z, emptyList())
+        val built = buildHierarchy(points, filteredIndices, radius, minPoints, maxZoom, minZoom)
+        val snapshot = built.first[z] ?: ZoomSnapshot(z, emptyList())
         val out = toOutput(snapshot)
-        lastLeaves = built.leaves
+        lastLeaves = built.second
         lastPoints = points
-        lastExpansionZoom = built.expansionZoom
+        lastExpansionZoom = built.third
 
         putCache(
           cacheKey,
           DatasetCacheEntry(
             key = cacheKey,
             points = points,
-            snapshots = built.snapshots,
-            leaves = built.leaves,
-            expansionZoom = built.expansionZoom,
+            snapshots = built.first,
+            leaves = built.second,
+            expansionZoom = built.third,
           )
         )
-        reactApplicationContext.runOnUiQueueThread {
-          promise.resolve(out)
-        }
+        reactApplicationContext.runOnUiQueueThread { promise.resolve(out) }
       } catch (t: Throwable) {
-        reactApplicationContext.runOnUiQueueThread {
-          promise.reject("clustering_error", t.message, t)
-        }
+        reactApplicationContext.runOnUiQueueThread { promise.reject("clustering_error", t.message, t) }
       }
     }
   }
@@ -140,15 +174,15 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
 
   private fun buildHierarchy(
     points: ReadableArray,
+    filteredIndices: List<Int>,
     radius: Double,
     minPoints: Int,
     maxZoom: Int,
     minZoom: Int,
   ): Triple<Map<Int, ZoomSnapshot>, Map<String, IntArray>, Map<String, Int>> {
     var current = mutableListOf<ClusterEntity>()
-    for (i in 0 until points.size()) {
+    for (i in filteredIndices) {
       val p = points.getMap(i) ?: continue
-      if (!p.hasKey("latitude") || !p.hasKey("longitude")) continue
       current.add(
         ClusterEntity(
           id = "p_$i",
@@ -186,13 +220,22 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
       }
 
       val next = mutableListOf<ClusterEntity>()
-      buckets.toSortedMap().forEach { (cellKey, bucket) ->
+      // Optimization: Avoid sorted map
+      buckets.forEach { (_, bucket) ->
         val total = bucket.sumOf { it.count }
         if (total >= minPoints) {
           val wLat = bucket.sumOf { it.latitude * it.count.toDouble() }
           val wLon = bucket.sumOf { it.longitude * it.count.toDouble() }
-          val leafs = bucket.flatMap { it.leafPointIndices.toList() }.distinct().sorted().toIntArray()
-          val id = "c_${zoom}_${cellKey}_${leafs.firstOrNull() ?: -1}_${leafs.size}"
+          
+          // Optimization: Simple merge instead of distinct/sorted
+          val leafs = IntArray(total)
+          var pos = 0
+          for (e in bucket) {
+            System.arraycopy(e.leafPointIndices, 0, leafs, pos, e.leafPointIndices.size)
+            pos += e.leafPointIndices.size
+          }
+          
+          val id = "c_${zoom}_${leafs.firstOrNull() ?: -1}_${leafs.size}"
           val cluster = ClusterEntity(
             id = id,
             latitude = wLat / total.toDouble(),
@@ -212,14 +255,77 @@ class NativeMapClusteringModule(reactContext: ReactApplicationContext) :
       current = next
     }
 
-    snapshots.forEach { (zoom, snapshot) ->
-      snapshot.entities.forEach { entity ->
-        if (!entity.isCluster || entity.count <= 1) return@forEach
-        expansionMap[entity.id] = (zoom + 1).coerceAtMost(maxZoom)
+    return Triple(snapshots, leaves, expansionMap)
+  }
+
+  @ReactMethod
+  fun buildFullHierarchyGeoJSON(
+    points: ReadableArray,
+    options: ReadableMap?,
+    promise: Promise
+  ) {
+    worker.execute {
+      try {
+        val radius = if (options?.hasKey("radius") == true) options.getDouble("radius") else 56.0
+        val minPoints = if (options?.hasKey("minPoints") == true) options.getInt("minPoints") else 3
+        val maxZoom = if (options?.hasKey("maxZoom") == true) options.getInt("maxZoom") else 18
+        val minZoom = if (options?.hasKey("minZoom") == true) options.getInt("minZoom") else 0
+
+        val validIndices = mutableListOf<Int>()
+        for (i in 0 until points.size()) {
+          val p = points.getMap(i) ?: continue
+          if (p.hasKey("latitude") && p.hasKey("longitude")) {
+            validIndices.add(i)
+          }
+        }
+
+        val built = buildHierarchy(points, validIndices, radius, minPoints, maxZoom, minZoom)
+        
+        val geoJsonOutput = Arguments.createMap()
+        built.first.forEach { (zoom, snapshot) ->
+          geoJsonOutput.putMap(zoom.toString(), toGeoJsonFeatureCollection(snapshot))
+        }
+
+        lastLeaves = built.second
+        lastPoints = points
+        lastExpansionZoom = built.third
+
+        reactApplicationContext.runOnUiQueueThread { promise.resolve(geoJsonOutput) }
+      } catch (t: Throwable) {
+        reactApplicationContext.runOnUiQueueThread { promise.reject("clustering_error", t.message, t) }
       }
     }
+  }
 
-    return Triple(snapshots, leaves, expansionMap)
+  private fun toGeoJsonFeatureCollection(snapshot: ZoomSnapshot): WritableMap {
+    val features = Arguments.createArray()
+    snapshot.entities.forEach { e ->
+      val isCluster = e.isCluster && e.count > 1
+      val feature = Arguments.createMap()
+      feature.putString("type", "Feature")
+      feature.putString("id", e.id)
+      
+      val geometry = Arguments.createMap()
+      geometry.putString("type", "Point")
+      val coords = Arguments.createArray()
+      coords.pushDouble(e.longitude)
+      coords.pushDouble(e.latitude)
+      geometry.putArray("coordinates", coords)
+      feature.putMap("geometry", geometry)
+      
+      val props = Arguments.createMap()
+      props.putBoolean("cluster", isCluster)
+      props.putInt("point_count", e.count)
+      props.putString("type", if (isCluster) "cluster" else "point")
+      feature.putMap("properties", props)
+      
+      features.pushMap(feature)
+    }
+    
+    val collection = Arguments.createMap()
+    collection.putString("type", "FeatureCollection")
+    collection.putArray("features", features)
+    return collection
   }
 
   private fun toOutput(snapshot: ZoomSnapshot): WritableArray {

@@ -297,14 +297,14 @@ export default function ClusterTestScreen() {
 
         {/* GPU Skia Layer Overlay */}
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Canvas style={StyleSheet.absoluteFill}>
+          <Canvas style={styles.canvas}>
              <SkiaClusterLayer
                collection={getGeoJsonForZoomSync(computeRawZoom(region.longitudeDelta), `cluster_test_${size}`)}
-               projection={(lat, lon) => {
-                 // Simplified projection for the test page demo
-                 // Ideally use mapRef.current.pointForCoordinate but it's async
-                 return null;
-               }}
+               projection={require('../services/mapProjection').createMercatorProjection(
+                 region,
+                 S.windowWidth || 400, // Use actual width if available
+                 S.windowHeight || 800  // Use actual height if available
+               )}
              />
           </Canvas>
         </View>

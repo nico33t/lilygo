@@ -9,10 +9,14 @@ import { getSessionPoints } from '../services/historyService'
 import type { TrackPoint } from '../types'
 import { C, S } from '../constants/design'
 import {
-  buildNativeClusters,
+  getGeoJsonForZoomSync,
+  buildFullGeoJsonHierarchy,
   getClusterProviderTuning,
   isNativeClusteringAvailable,
 } from '../services/nativeClustering'
+import { SkiaClusterLayer } from './SkiaClusterLayer'
+import { Canvas } from '@shopify/react-native-skia'
+import { createMercatorProjection } from '../services/mapProjection'
 import { getSharedMarkerImageSource } from '../services/mapMarkerImage'
 import type { ClusterFeature } from '../types/clustering'
 
@@ -156,55 +160,74 @@ export default function SessionScreen() {
         <ActivityIndicator style={{ marginTop: 60 }} color={C.accent} />
       ) : (
         <>
-          <MapView
-            style={{ flex: 1 }}
-            provider={MAP_PROVIDER}
-            googleRenderer={Platform.OS === 'android' ? 'LEGACY' : undefined}
-            mapPadding={{ top: 0, right: 0, bottom: panelHeight, left: 0 }}
-            initialRegion={coords.length > 0 ? {
-              latitude: coords[0].latitude,
-              longitude: coords[0].longitude,
-              latitudeDelta: 0.05,
-              longitudeDelta: 0.05,
-            } : undefined}
-            onRegionChangeComplete={(next) => {
-              if (regionDebounceRef.current) clearTimeout(regionDebounceRef.current)
-              regionDebounceRef.current = setTimeout(() => setRegion(next), 120)
-            }}
-          >
-            {coords.length > 1 && (
-              <Polyline coordinates={coords} strokeColor={C.accent} strokeWidth={3} />
-            )}
+          <View style={styles.mapContainer}>
+            <MapView
+              style={styles.map}
+              provider={MAP_PROVIDER}
+              googleRenderer={Platform.OS === 'android' ? 'LEGACY' : undefined}
+              mapPadding={{ top: 0, right: 0, bottom: panelHeight, left: 0 }}
+              initialRegion={coords.length > 0 ? {
+                latitude: coords[0].latitude,
+                longitude: coords[0].longitude,
+                latitudeDelta: 0.05,
+                longitudeDelta: 0.05,
+              } : undefined}
+              onRegionChangeComplete={(next) => {
+                if (regionDebounceRef.current) clearTimeout(regionDebounceRef.current)
+                regionDebounceRef.current = setTimeout(() => setRegion(next), 120)
+              }}
+            >
+              {coords.length > 1 && (
+                <Polyline coordinates={coords} strokeColor={C.accent} strokeWidth={3} />
+              )}
 
-            {canCluster && clusters.map((feature) => {
-              const isCluster = feature.type === 'cluster' && feature.count > 1
-              return (
-                <Marker
-                  key={`cluster-${feature.id}`}
-                  coordinate={{ latitude: feature.latitude, longitude: feature.longitude }}
-                  tracksViewChanges={false}
-                  pinColor={isCluster ? getClusterPinColor(feature.count) : CLUSTER_COLOR_LOW}
-                  title={isCluster ? `${feature.count}` : undefined}
-                />
-              )
-            })}
+              {/* Native Markers for interaction (hidden but touchable) */}
+              {canCluster && clusters.map((feature) => {
+                const isCluster = feature.type === 'cluster' && feature.count > 1
+                if (!isCluster) return null
+                return (
+                  <Marker
+                    key={`cluster-hittest-${feature.id}`}
+                    coordinate={{ latitude: feature.latitude, longitude: feature.longitude }}
+                    tracksViewChanges={false}
+                    opacity={0}
+                  />
+                )
+              })}
 
-            {current && (
-              <>
-                <Circle
-                  center={{ latitude: current.lat, longitude: current.lon }}
-                  radius={POSITION_CIRCLE_RADIUS_M}
-                  strokeWidth={1}
-                  strokeColor="rgba(255,56,92,0.45)"
-                  fillColor="rgba(255,56,92,0.18)"
-                />
-                <Marker
-                  coordinate={{ latitude: current.lat, longitude: current.lon }}
-                  image={SHARED_MARKER_IMAGE as any}
-                />
-              </>
+              {current && (
+                <>
+                  <Circle
+                    center={{ latitude: current.lat, longitude: current.lon }}
+                    radius={POSITION_CIRCLE_RADIUS_M}
+                    strokeWidth={1}
+                    strokeColor="rgba(255,56,92,0.45)"
+                    fillColor="rgba(255,56,92,0.18)"
+                  />
+                  <Marker
+                    coordinate={{ latitude: current.lat, longitude: current.lon }}
+                    image={SHARED_MARKER_IMAGE as any}
+                  />
+                </>
+              )}
+            </MapView>
+
+            {/* GPU Skia Layer */}
+            {canCluster && region && (
+              <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Canvas style={styles.map}>
+                  <SkiaClusterLayer
+                    collection={getGeoJsonForZoomSync(computeRawZoom(region.longitudeDelta), `session_${id}`)}
+                    projection={createMercatorProjection(
+                      region,
+                      S.windowWidth || 400,
+                      S.windowHeight || 800
+                    )}
+                  />
+                </Canvas>
+              </View>
             )}
-          </MapView>
+          </View>
 
           <View
             style={[styles.panel, { paddingBottom: insets.bottom + S.md }]}
@@ -242,6 +265,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: C.sep,
   },
+  mapContainer: { flex: 1, overflow: 'hidden' },
+  map: { flex: 1 },
   iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 16, fontWeight: '700', color: C.text1 },
   panel: { backgroundColor: C.card, paddingHorizontal: S.md, paddingTop: S.sm },
