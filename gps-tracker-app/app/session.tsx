@@ -92,13 +92,8 @@ export default function SessionScreen() {
   )
 
   useEffect(() => {
-    if (!canCluster || !region) {
-      setClusters([])
-      lastClusterRef.current = null
-      return
-    }
+    if (!canCluster || !region) return
 
-    const runId = ++clusterRunId.current
     const rawZoom = computeRawZoom(region.longitudeDelta)
     const prevStableZoom = stableZoomRef.current
     const stableZoom =
@@ -107,60 +102,46 @@ export default function SessionScreen() {
         : prevStableZoom
     stableZoomRef.current = stableZoom
 
-    const now = Date.now()
-    const cached = lastClusterRef.current
-    if (cached) {
-      const sameZoom = cached.zoom === stableZoom
-      const centerDriftLat = Math.abs(region.latitude - cached.centerLat)
-      const centerDriftLon = Math.abs(region.longitude - cached.centerLon)
-      const centerDriftRatioLat = centerDriftLat / Math.max(region.latitudeDelta, 0.000001)
-      const centerDriftRatioLon = centerDriftLon / Math.max(region.longitudeDelta, 0.000001)
-      const movedLittle = centerDriftRatioLat < 0.08 && centerDriftRatioLon < 0.08
-      const stillFresh = now - cached.at < 1800
-      if (sameZoom && movedLittle && stillFresh) {
-        if (clusters !== cached.clusters) setClusters(cached.clusters)
+    const datasetId = `session_${id}`
+    
+    // 1. Try sync lookup first (Normalized & Cached logic)
+    import('../services/nativeClustering').then(({ getGeoJsonForZoomSync, buildFullGeoJsonHierarchy }) => {
+      const collection = getGeoJsonForZoomSync(stableZoom, datasetId)
+      if (collection) {
+        setClusters(collection.features.map(f => ({
+          id: f.id,
+          type: f.properties.type,
+          count: f.properties.point_count,
+          latitude: f.geometry.coordinates[1],
+          longitude: f.geometry.coordinates[0],
+        })))
         return
       }
-    }
 
-    const bounds = {
-      north: region.latitude + region.latitudeDelta / 2,
-      south: region.latitude - region.latitudeDelta / 2,
-      east: region.longitude + region.longitudeDelta / 2,
-      west: region.longitude - region.longitudeDelta / 2,
-    }
-
-    if (clusterComputeTimerRef.current) clearTimeout(clusterComputeTimerRef.current)
-    clusterComputeTimerRef.current = setTimeout(() => {
-      buildNativeClusters(clusterInput, stableZoom, bounds, {
-        ...clusterTuning,
-        radius: clusterTuning.radius ?? CLUSTER_RADIUS,
-        minPoints: clusterTuning.minPoints ?? CLUSTER_MIN_POINTS,
-        maxZoom: clusterTuning.maxZoom ?? CLUSTER_MAX_ZOOM,
-      })
-        .then((result) => {
-          if (clusterRunId.current !== runId) return
-          if (result.length > 0) {
-            setClusters(result)
-            lastClusterRef.current = {
-              zoom: stableZoom,
-              centerLat: region.latitude,
-              centerLon: region.longitude,
-              latDelta: region.latitudeDelta,
-              lonDelta: region.longitudeDelta,
-              clusters: result,
-              at: Date.now(),
-            }
-            const clusterCount = result.filter((r) => r.type === 'cluster' && r.count > 1).length
-            const ratio = clusterCount / Math.max(1, result.length)
-            refreshDelayMsRef.current = ratio > 0.6 ? 320 : ratio > 0.3 ? 220 : 120
+      // 2. If not cached, trigger a full hierarchy build (pre-calculations)
+      if (clusterComputeTimerRef.current) clearTimeout(clusterComputeTimerRef.current)
+      clusterComputeTimerRef.current = setTimeout(() => {
+        buildFullGeoJsonHierarchy(clusterInput, {
+          ...clusterTuning,
+          datasetId,
+          radius: clusterTuning.radius ?? CLUSTER_RADIUS,
+          minPoints: clusterTuning.minPoints ?? CLUSTER_MIN_POINTS,
+          maxZoom: clusterTuning.maxZoom ?? CLUSTER_MAX_ZOOM,
+        }).then(hierarchy => {
+          const res = hierarchy[stableZoom.toString()]
+          if (res) {
+            setClusters(res.features.map(f => ({
+              id: f.id,
+              type: f.properties.type,
+              count: f.properties.point_count,
+              latitude: f.geometry.coordinates[1],
+              longitude: f.geometry.coordinates[0],
+            })))
           }
         })
-        .catch(() => {
-          // Keep previous valid clusters to avoid flicker/disappear on transient native errors.
-        })
-    }, refreshDelayMsRef.current)
-  }, [canCluster, clusterInput, region, clusterTuning])
+      }, 100)
+    })
+  }, [canCluster, clusterInput, region, clusterTuning, id])
 
   return (
     <View style={{ flex: 1, backgroundColor: C.card }}>
